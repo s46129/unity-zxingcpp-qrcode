@@ -2,6 +2,12 @@
 
 Reusable Unity Package Manager package for decoding QR Codes from Gray8/luminance buffers with the ZXing-C++ C API.
 
+## Relationship to ZXing-C++
+
+This is an unofficial Unity integration for the [ZXing-C++ project](https://github.com/zxing-cpp/zxing-cpp). It is not affiliated with or endorsed by the ZXing-C++ project or its contributors.
+
+The native decoding engine is built without source patches from [ZXing-C++ v3.1.0](https://github.com/zxing-cpp/zxing-cpp/releases/tag/v3.1.0), pinned to commit [`885baaf`](https://github.com/zxing-cpp/zxing-cpp/commit/885baaf0840335153c1a487fa65f9c1388702c81). This repository provides the Unity package structure, C# P/Invoke API, Gray8 preprocessing, asynchronous scanner, native build scripts, prebuilt plugins, samples, documentation, and tests.
+
 Maintained as a personal open-source project by [s46129](https://github.com/s46129). The UPM package identity is `com.s46129.qrcode`; application code uses the descriptive `ZXingCpp.QRCode` namespace.
 
 - Windows x86_64 and Android arm64-v8a native plugin layout
@@ -33,3 +39,7 @@ if (decoder.TryDecode(image, out var result))
 ```
 
 For continuous camera frames, use `QRCodeScanner`; create it on Unity's main thread so callbacks are posted back to that thread.
+
+## License and attribution
+
+Original code developed for this Unity package is licensed under the [Apache License 2.0](LICENSE.md). The bundled native plugins include ZXing-C++ and other third-party components that remain under their respective licenses; see [Third-party notices](Third%20Party%20Notices.md) and the included [ZXing-C++ license](ZXing-C++%20LICENSE.md).

@@ -6,3 +6,4 @@
 - Added the publisher-neutral `ZXingCpp.QRCode` public namespace.
 - Added ZXing-C++ C API bridge for Gray8 buffers.
 - Added background scanner, ROI/downscale preprocessing, sample, build scripts, importer helper, and EditMode tests.
+- Added explicit upstream attribution, unofficial-integration status, and complete notices for bundled third-party components.

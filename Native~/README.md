@@ -21,3 +21,5 @@ Requirements: CMake 3.21+, Ninja, Android NDK r23 or newer. Unity's installed ND
 On macOS/Linux, set `ANDROID_NDK_ROOT` and run `./build-android.sh`.
 
 After either build, return to Unity and use **Tools > ZXing-C++ QR Code > Apply Native Plugin Import Settings**.
+
+When replacing a bundled binary, update the build provenance and dependency licenses in `Documentation~/AI/LicenseCompliance.md` and `Third Party Notices.md`. A change to the ZXing-C++ pin, Android NDK, Visual C++ toolset, runtime linkage, or CMake feature flags requires a new third-party license audit.

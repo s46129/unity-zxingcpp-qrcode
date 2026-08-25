@@ -49,4 +49,4 @@ scanner.TrySubmitFrame(new Gray8Image(yPlane, width, height, yRowStride));
 
 Create the scanner on Unity's main thread. It captures the current `SynchronizationContext`, so result events are posted back there. An accepted frame buffer is borrowed and must not be changed or returned to a pool until `ScanCompleted` fires.
 
-See [Installation and native builds](installation.md), [acceptance specification](Spec/QRCodePackageSpec1.md), and import the Basic Gray8 Decode sample from Package Manager.
+See [Installation and native builds](installation.md), [third-party notices](../Third%20Party%20Notices.md), [acceptance specification](Spec/QRCodePackageSpec1.md), and import the Basic Gray8 Decode sample from Package Manager.
