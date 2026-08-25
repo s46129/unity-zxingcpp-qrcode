@@ -1,0 +1,23 @@
+{
+  "name": "S46129.QRCode.Tests.EditMode",
+  "rootNamespace": "S46129.QRCode.Tests",
+  "references": [
+    "S46129.QRCode"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": true,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

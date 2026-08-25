@@ -1,0 +1,16 @@
+{
+  "name": "S46129.QRCode.Sample.Basic",
+  "rootNamespace": "S46129.QRCode.Samples",
+  "references": [
+    "S46129.QRCode"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

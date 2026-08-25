@@ -1,0 +1,29 @@
+{
+  "name": "com.s46129.qrcode",
+  "version": "1.0.0",
+  "displayName": "ZXing-C++ QR Code",
+  "description": "High-performance Gray8 QR Code decoding for Unity on Windows and Android using ZXing-C++.",
+  "unity": "2021.3",
+  "license": "Apache-2.0",
+  "keywords": [
+    "qr-code",
+    "barcode",
+    "zxing",
+    "android",
+    "windows"
+  ],
+  "author": {
+    "name": "s46129",
+    "url": "https://github.com/s46129"
+  },
+  "documentationUrl": "https://github.com/s46129/unity-zxingcpp-qrcode/blob/main/Documentation~/index.md",
+  "changelogUrl": "https://github.com/s46129/unity-zxingcpp-qrcode/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/s46129/unity-zxingcpp-qrcode/blob/main/LICENSE.md",
+  "samples": [
+    {
+      "displayName": "Basic Gray8 Decode",
+      "description": "Decode an R8/Alpha8 Texture2D or a raw Gray8 byte buffer without RGBA conversion.",
+      "path": "Samples~/Basic"
+    }
+  ]
+}
