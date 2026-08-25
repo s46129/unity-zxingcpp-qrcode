@@ -1,6 +1,6 @@
 using System;
 
-namespace S46129.QRCode
+namespace ZXingCpp.QRCode
 {
     /// <summary>Controls background scan scheduling and decode behavior.</summary>
     public sealed class QRCodeScannerOptions

@@ -2,7 +2,7 @@
 
 ## 設計決策
 
-- 套件發布身分固定為 `com.s46129.qrcode`／`S46129.QRCode`，Git repository 為 `s46129/unity-zxingcpp-qrcode`；產品顯示名稱保持技術導向，不使用公司品牌。
+- UPM 唯一發布識別保留 `com.s46129.qrcode`，Git repository 為 `s46129/unity-zxingcpp-qrcode`；公開程式識別固定為 `ZXingCpp.QRCode`，不得把維護者帳號帶入 namespace、assembly 或 native build target。
 - 對外資料縫是 `IQRCodeDecoder`；native 實作與 EditMode fake decoder 都使用同一介面。
 - `QRCodeScanner` 不是 `MonoBehaviour`。Unity 宿主只負責取得 frame 與呼叫 `TrySubmitFrame`。
 - 輸入只接受 managed `byte[]` Gray8。完整 frame 與不縮圖 ROI 皆不複製；數值縮圖才租用 `ArrayPool<byte>`。

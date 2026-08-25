@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace S46129.QRCode
+namespace ZXingCpp.QRCode
 {
     /// <summary>Rate-limits Gray8 frames and decodes accepted frames on a background worker.</summary>
     public sealed class QRCodeScanner : IDisposable

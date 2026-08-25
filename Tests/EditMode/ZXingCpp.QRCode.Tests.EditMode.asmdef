@@ -1,8 +1,8 @@
 {
-  "name": "S46129.QRCode.Tests.EditMode",
-  "rootNamespace": "S46129.QRCode.Tests",
+  "name": "ZXingCpp.QRCode.Tests.EditMode",
+  "rootNamespace": "ZXingCpp.QRCode.Tests",
   "references": [
-    "S46129.QRCode"
+    "ZXingCpp.QRCode"
   ],
   "includePlatforms": [
     "Editor"

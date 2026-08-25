@@ -1,6 +1,6 @@
 using System;
 
-namespace S46129.QRCode
+namespace ZXingCpp.QRCode
 {
     /// <summary>Reports a missing, incompatible, or failed ZXing-C++ native plugin call.</summary>
     public sealed class QRCodeNativeException : Exception

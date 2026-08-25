@@ -1,6 +1,6 @@
 using System;
 
-namespace S46129.QRCode.Internal
+namespace ZXingCpp.QRCode.Internal
 {
     internal readonly struct PixelRegion
     {

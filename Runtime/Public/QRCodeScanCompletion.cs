@@ -1,6 +1,6 @@
 using System;
 
-namespace S46129.QRCode
+namespace ZXingCpp.QRCode
 {
     /// <summary>Describes one accepted scanner frame after its borrowed buffer is no longer in use.</summary>
     public sealed class QRCodeScanCompletion

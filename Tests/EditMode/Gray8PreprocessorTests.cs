@@ -1,7 +1,7 @@
 using NUnit.Framework;
-using S46129.QRCode.Internal;
+using ZXingCpp.QRCode.Internal;
 
-namespace S46129.QRCode.Tests
+namespace ZXingCpp.QRCode.Tests
 {
     public sealed class Gray8PreprocessorTests
     {

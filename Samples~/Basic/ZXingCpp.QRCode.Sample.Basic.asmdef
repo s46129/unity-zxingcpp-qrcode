@@ -1,8 +1,8 @@
 {
-  "name": "S46129.QRCode.Sample.Basic",
-  "rootNamespace": "S46129.QRCode.Samples",
+  "name": "ZXingCpp.QRCode.Sample.Basic",
+  "rootNamespace": "ZXingCpp.QRCode.Samples",
   "references": [
-    "S46129.QRCode"
+    "ZXingCpp.QRCode"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

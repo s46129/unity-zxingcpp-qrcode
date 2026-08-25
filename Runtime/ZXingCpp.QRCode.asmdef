@@ -1,6 +1,6 @@
 {
-  "name": "S46129.QRCode",
-  "rootNamespace": "S46129.QRCode",
+  "name": "ZXingCpp.QRCode",
+  "rootNamespace": "ZXingCpp.QRCode",
   "references": [],
   "includePlatforms": [],
   "excludePlatforms": [],

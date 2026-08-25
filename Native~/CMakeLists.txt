@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(S46129QRCodeNative LANGUAGES CXX)
+project(ZXingCppQRCodeNative LANGUAGES CXX)
 
 include(FetchContent)
 
@@ -29,38 +29,38 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(zxing_cpp)
 
-get_filename_component(S46129_PACKAGE_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+get_filename_component(QRCODE_PACKAGE_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 
 if(WIN32)
     if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
         message(FATAL_ERROR "ZXing-C++ QR Code supports Windows x86_64 only.")
     endif()
-    set(S46129_PLUGIN_DIR "${S46129_PACKAGE_ROOT}/Runtime/Plugins/Windows/x86_64")
+    set(QRCODE_PLUGIN_DIR "${QRCODE_PACKAGE_ROOT}/Runtime/Plugins/Windows/x86_64")
 elseif(ANDROID)
     if(NOT ANDROID_ABI STREQUAL "arm64-v8a")
         message(FATAL_ERROR "ZXing-C++ QR Code supports Android arm64-v8a only.")
     endif()
     # Unity can pair a newer NDK with an older bundled CMake that omits libc++ from shared-library link lines.
     target_link_libraries(ZXing PRIVATE c++_static c++abi)
-    set(S46129_PLUGIN_DIR "${S46129_PACKAGE_ROOT}/Runtime/Plugins/Android/arm64-v8a")
+    set(QRCODE_PLUGIN_DIR "${QRCODE_PACKAGE_ROOT}/Runtime/Plugins/Android/arm64-v8a")
 else()
     message(FATAL_ERROR "This package build supports only Windows and Android.")
 endif()
 
 if(ANDROID)
     add_custom_target(
-        S46129CopyZXing ALL
-        COMMAND "${CMAKE_COMMAND}" -E make_directory "${S46129_PLUGIN_DIR}"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:ZXing>" "${S46129_PLUGIN_DIR}/$<TARGET_FILE_NAME:ZXing>"
-        COMMAND "${CMAKE_STRIP}" --strip-unneeded "${S46129_PLUGIN_DIR}/$<TARGET_FILE_NAME:ZXing>"
+        CopyZXingPlugin ALL
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${QRCODE_PLUGIN_DIR}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:ZXing>" "${QRCODE_PLUGIN_DIR}/$<TARGET_FILE_NAME:ZXing>"
+        COMMAND "${CMAKE_STRIP}" --strip-unneeded "${QRCODE_PLUGIN_DIR}/$<TARGET_FILE_NAME:ZXing>"
         DEPENDS ZXing
         COMMENT "Copying and stripping ZXing native plugin into the Unity package"
     )
 else()
     add_custom_target(
-        S46129CopyZXing ALL
-        COMMAND "${CMAKE_COMMAND}" -E make_directory "${S46129_PLUGIN_DIR}"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:ZXing>" "${S46129_PLUGIN_DIR}/$<TARGET_FILE_NAME:ZXing>"
+        CopyZXingPlugin ALL
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${QRCODE_PLUGIN_DIR}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:ZXing>" "${QRCODE_PLUGIN_DIR}/$<TARGET_FILE_NAME:ZXing>"
         DEPENDS ZXing
         COMMENT "Copying ZXing native plugin into the Unity package"
     )

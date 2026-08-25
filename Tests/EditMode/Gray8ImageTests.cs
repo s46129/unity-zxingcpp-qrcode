@@ -1,7 +1,7 @@
 using System;
 using NUnit.Framework;
 
-namespace S46129.QRCode.Tests
+namespace ZXingCpp.QRCode.Tests
 {
     public sealed class Gray8ImageTests
     {

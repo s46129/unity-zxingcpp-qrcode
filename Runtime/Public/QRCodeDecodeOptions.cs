@@ -1,6 +1,6 @@
 using System;
 
-namespace S46129.QRCode
+namespace ZXingCpp.QRCode
 {
     /// <summary>Controls QR detection and Gray8 preprocessing for one decode operation.</summary>
     public sealed class QRCodeDecodeOptions

@@ -1,6 +1,6 @@
 {
-  "name": "S46129.QRCode.Editor",
-  "rootNamespace": "S46129.QRCode.Editor",
+  "name": "ZXingCpp.QRCode.Editor",
+  "rootNamespace": "ZXingCpp.QRCode.Editor",
   "references": [],
   "includePlatforms": [
     "Editor"

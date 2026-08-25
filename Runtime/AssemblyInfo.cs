@@ -1,3 +1,3 @@
 using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("S46129.QRCode.Tests.EditMode")]
+[assembly: InternalsVisibleTo("ZXingCpp.QRCode.Tests.EditMode")]

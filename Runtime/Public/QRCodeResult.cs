@@ -1,6 +1,6 @@
 using System;
 
-namespace S46129.QRCode
+namespace ZXingCpp.QRCode
 {
     /// <summary>An immutable decoded QR payload and its position in the original input image.</summary>
     public sealed class QRCodeResult

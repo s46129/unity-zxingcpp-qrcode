@@ -1,6 +1,6 @@
 using System;
 
-namespace S46129.QRCode
+namespace ZXingCpp.QRCode
 {
     /// <summary>A normalized top-left-origin region of interest, where every component is in the range 0..1.</summary>
     public readonly struct QRCodeRegion : IEquatable<QRCodeRegion>

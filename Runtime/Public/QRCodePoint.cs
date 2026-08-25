@@ -1,6 +1,6 @@
 using System;
 
-namespace S46129.QRCode
+namespace ZXingCpp.QRCode
 {
     /// <summary>An integer image-space point measured from the original Gray8 image's top-left corner.</summary>
     public readonly struct QRCodePoint : IEquatable<QRCodePoint>

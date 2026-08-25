@@ -13,7 +13,7 @@ ZXing-C++ QR Code for Unity is a reusable Unity package that decodes QR Codes fr
 ## API example
 
 ```csharp
-using S46129.QRCode;
+using ZXingCpp.QRCode;
 
 var decoder = new ZXingCppQRCodeDecoder();
 var options = new QRCodeDecodeOptions

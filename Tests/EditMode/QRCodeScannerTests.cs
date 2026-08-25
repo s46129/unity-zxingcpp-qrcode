@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Threading;
 using NUnit.Framework;
 
-namespace S46129.QRCode.Tests
+namespace ZXingCpp.QRCode.Tests
 {
     public sealed class QRCodeScannerTests
     {

@@ -2,7 +2,7 @@
 
 Reusable Unity Package Manager package for decoding QR Codes from Gray8/luminance buffers with the ZXing-C++ C API.
 
-Maintained as a personal open-source project by [s46129](https://github.com/s46129). The package identity is `com.s46129.qrcode` and the public API namespace is `S46129.QRCode`.
+Maintained as a personal open-source project by [s46129](https://github.com/s46129). The UPM package identity is `com.s46129.qrcode`; application code uses the descriptive `ZXingCpp.QRCode` namespace.
 
 - Windows x86_64 and Android arm64-v8a native plugin layout
 - No `Color32`/RGBA conversion in the decode path
@@ -23,8 +23,10 @@ https://github.com/s46129/unity-zxingcpp-qrcode.git
 ## Quick start
 
 ```csharp
-var decoder = new S46129.QRCode.ZXingCppQRCodeDecoder();
-var image = new S46129.QRCode.Gray8Image(grayBytes, width, height);
+using ZXingCpp.QRCode;
+
+var decoder = new ZXingCppQRCodeDecoder();
+var image = new Gray8Image(grayBytes, width, height);
 
 if (decoder.TryDecode(image, out var result))
     UnityEngine.Debug.Log(result.Text);

@@ -1,9 +1,9 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
-using S46129.QRCode.Internal;
+using ZXingCpp.QRCode.Internal;
 
-namespace S46129.QRCode
+namespace ZXingCpp.QRCode
 {
     /// <summary>A stateless Gray8 QR decoder backed by the ZXing-C++ C API.</summary>
     public sealed class ZXingCppQRCodeDecoder : IQRCodeDecoder

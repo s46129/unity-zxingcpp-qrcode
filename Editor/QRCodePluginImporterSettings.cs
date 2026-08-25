@@ -2,7 +2,7 @@ using System;
 using UnityEditor;
 using UnityEngine;
 
-namespace S46129.QRCode.Editor
+namespace ZXingCpp.QRCode.Editor
 {
     internal static class QRCodePluginImporterSettings
     {

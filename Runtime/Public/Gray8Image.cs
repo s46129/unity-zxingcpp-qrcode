@@ -1,6 +1,6 @@
 using System;
 
-namespace S46129.QRCode
+namespace ZXingCpp.QRCode
 {
     /// <summary>A borrowed, row-strided 8-bit luminance image stored in a managed byte array.</summary>
     public readonly struct Gray8Image

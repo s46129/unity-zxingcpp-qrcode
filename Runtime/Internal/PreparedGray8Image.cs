@@ -1,7 +1,7 @@
 using System;
 using System.Buffers;
 
-namespace S46129.QRCode.Internal
+namespace ZXingCpp.QRCode.Internal
 {
     internal readonly struct PreparedGray8Image : IDisposable
     {

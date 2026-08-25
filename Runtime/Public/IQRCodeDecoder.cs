@@ -1,4 +1,4 @@
-namespace S46129.QRCode
+namespace ZXingCpp.QRCode
 {
     /// <summary>Decodes a QR Code from a validated Gray8 image.</summary>
     public interface IQRCodeDecoder

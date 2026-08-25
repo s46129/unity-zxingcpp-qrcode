@@ -2,7 +2,7 @@ using System;
 using Unity.Collections;
 using UnityEngine;
 
-namespace S46129.QRCode.Samples
+namespace ZXingCpp.QRCode.Samples
 {
     public sealed class QRCodeSampleRunner : MonoBehaviour
     {
