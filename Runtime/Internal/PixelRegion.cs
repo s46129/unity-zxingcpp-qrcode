@@ -35,6 +35,11 @@ namespace ZXingCpp.QRCode.Internal
             int right = Math.Min(imageWidth, CeilingPixel(((double)region.X + region.Width) * imageWidth));
             int bottom = Math.Min(imageHeight, CeilingPixel(((double)region.Y + region.Height) * imageHeight));
 
+            // The bounds tolerance admits a ROI starting past the last pixel; widening that empty
+            // intersection to one pixel would address memory outside the image.
+            if (left >= imageWidth || top >= imageHeight)
+                throw new ArgumentException("The decode ROI does not intersect the image.", nameof(region));
+
             return new PixelRegion(left, top, Math.Max(1, right - left), Math.Max(1, bottom - top));
         }
 
