@@ -84,8 +84,10 @@ namespace ZXingCpp.QRCode
             }
         }
 
+        /// <summary>Submits a frame the caller already holds; returns false when the scanner drops it.</summary>
         public bool TrySubmitFrame(Gray8Image frame) => TrySubmitFrame(frame, CurrentTimeSeconds());
 
+        /// <summary>Submits a frame the caller already holds; returns false when the scanner drops it.</summary>
         public bool TrySubmitFrame(Gray8Image frame, double timestampSeconds)
         {
             ValidateTimestamp(timestampSeconds);
@@ -160,8 +162,7 @@ namespace ZXingCpp.QRCode
             lock (_gate)
             {
                 _busy = false;
-                // A frame that never materialized must not push back the next scan; a newer
-                // generation already rewrote _nextScanTime, so leave that one alone.
+                // A frame that never materialized must not push back the next scan.
                 if (generation == _generation)
                     _nextScanTime = previousScanTime;
             }

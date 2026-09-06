@@ -240,7 +240,7 @@ namespace ZXingCpp.QRCode.Tests
         public void TrySubmitFrame_ProviderFrame_BufferStaysCheckedOutUntilScanCompleted()
         {
             var decoder = new BlockingDecoder();
-            var pool = new TrackingPool();
+            var ledger = new BufferLedger();
             using (var scanner = CreateScanner(decoder, TimeSpan.Zero, false))
             using (var completed = new ManualResetEventSlim())
             {
@@ -248,7 +248,7 @@ namespace ZXingCpp.QRCode.Tests
                 int rejectedProviderCalls = 0;
                 scanner.ScanCompleted += completion =>
                 {
-                    pool.Return(completion.Frame.Buffer);
+                    ledger.CheckIn(completion.Frame.Buffer);
                     completed.Set();
                 };
                 scanner.Start();
@@ -257,23 +257,96 @@ namespace ZXingCpp.QRCode.Tests
                     scanner.TrySubmitFrame(
                         () =>
                         {
-                            borrowed = pool.Rent(16);
+                            borrowed = ledger.CheckOut(16);
                             return new Gray8Image(borrowed, 4, 4);
                         },
                         0d),
                     Is.True);
                 Assert.That(decoder.Entered.Wait(3000), Is.True);
-                Assert.That(pool.IsCheckedOut(borrowed), Is.True);
+                Assert.That(ledger.IsCheckedOut(borrowed), Is.True);
 
                 Assert.That(scanner.TrySubmitFrame(() => CountingProvider(ref rejectedProviderCalls), 0d), Is.False);
                 Assert.That(rejectedProviderCalls, Is.Zero);
-                Assert.That(pool.RentCount, Is.EqualTo(1));
-                Assert.That(pool.ReturnCount, Is.Zero);
+                Assert.That(ledger.CheckOutCount, Is.EqualTo(1));
+                Assert.That(ledger.CheckInCount, Is.Zero);
 
                 decoder.Release.Set();
                 Assert.That(completed.Wait(3000), Is.True);
-                Assert.That(pool.IsCheckedOut(borrowed), Is.False);
-                Assert.That(pool.ReturnCount, Is.EqualTo(1));
+                Assert.That(ledger.IsCheckedOut(borrowed), Is.False);
+                Assert.That(ledger.CheckInCount, Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        public void TrySubmitFrame_ProviderThrowsAfterRestart_DoesNotRestoreTheStaleScanTime()
+        {
+            var decoder = new SequenceDecoder();
+            using (var scanner = CreateScanner(decoder, TimeSpan.FromSeconds(0.5), false))
+            {
+                scanner.Start();
+                Assert.That(scanner.TrySubmitFrame(Frame, 10d), Is.True);
+                Assert.That(SpinWait.SpinUntil(() => !scanner.IsBusy, 3000), Is.True);
+
+                Assert.That(
+                    () => scanner.TrySubmitFrame(
+                        () =>
+                        {
+                            scanner.Stop();
+                            scanner.Start();
+                            throw new InvalidOperationException("provider");
+                        },
+                        11d),
+                    Throws.TypeOf<InvalidOperationException>());
+
+                Assert.That(scanner.IsBusy, Is.False);
+                Assert.That(scanner.TrySubmitFrame(Frame, 0d), Is.True);
+            }
+        }
+
+        [Test]
+        public void TrySubmitFrame_SustainedSubmission_BuildsOneFramePerAcceptedScan()
+        {
+            var decoder = new BlockingDecoder();
+            using (var scanner = CreateScanner(decoder, TimeSpan.Zero, false))
+            using (var completed = new ManualResetEventSlim())
+            {
+                int calls = 0;
+                int accepted = 0;
+                scanner.ScanCompleted += _ => completed.Set();
+                scanner.Start();
+
+                for (int i = 0; i < 60; i++)
+                {
+                    if (scanner.TrySubmitFrame(() => CountingProvider(ref calls), i / 60d))
+                        accepted++;
+                }
+
+                Assert.That(accepted, Is.EqualTo(1));
+                Assert.That(calls, Is.EqualTo(1));
+
+                decoder.Release.Set();
+                Assert.That(completed.Wait(3000), Is.True);
+            }
+        }
+
+        [Test]
+        public void TrySubmitFrame_ProviderWithoutTimestamp_BuildsOnlyTheAcceptedFrame()
+        {
+            var decoder = new BlockingDecoder();
+            using (var scanner = CreateScanner(decoder, TimeSpan.Zero, false))
+            using (var completed = new ManualResetEventSlim())
+            {
+                int calls = 0;
+                scanner.ScanCompleted += _ => completed.Set();
+                scanner.Start();
+
+                Assert.That(scanner.TrySubmitFrame(() => CountingProvider(ref calls)), Is.True);
+                Assert.That(decoder.Entered.Wait(3000), Is.True);
+                Assert.That(scanner.TrySubmitFrame(() => CountingProvider(ref calls)), Is.False);
+                Assert.That(calls, Is.EqualTo(1));
+
+                decoder.Release.Set();
+                Assert.That(completed.Wait(3000), Is.True);
             }
         }
 
@@ -332,28 +405,28 @@ namespace ZXingCpp.QRCode.Tests
             }
         }
 
-        private sealed class TrackingPool
+        private sealed class BufferLedger
         {
             private readonly HashSet<byte[]> _checkedOut = new HashSet<byte[]>();
 
-            internal int RentCount { get; private set; }
+            internal int CheckOutCount { get; private set; }
 
-            internal int ReturnCount { get; private set; }
+            internal int CheckInCount { get; private set; }
 
-            internal byte[] Rent(int minimumLength)
+            internal byte[] CheckOut(int length)
             {
-                var buffer = new byte[minimumLength];
+                var buffer = new byte[length];
                 _checkedOut.Add(buffer);
-                RentCount++;
+                CheckOutCount++;
                 return buffer;
             }
 
-            internal void Return(byte[] buffer)
+            internal void CheckIn(byte[] buffer)
             {
                 if (!_checkedOut.Remove(buffer))
                     throw new InvalidOperationException("The buffer was returned while it was not checked out.");
 
-                ReturnCount++;
+                CheckInCount++;
             }
 
             internal bool IsCheckedOut(byte[] buffer) => _checkedOut.Contains(buffer);

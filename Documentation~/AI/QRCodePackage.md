@@ -21,6 +21,8 @@
 
 - 同時最多一個 background decode；busy 時新 frame 直接拒絕。
 - 只有接受 frame 時才推進 `nextScanTime`，避免 busy drop 延後下一次有效掃描。
+- 拒絕一個 frame 必須是零影像成本。`TrySubmitFrame(Func<Gray8Image>)` 在 `_gate` 內判完 running／busy／interval 才呼叫 provider，所以呼叫端無法在被拒的路徑上付出複製成本；`TrySubmitFrame(Gray8Image)` 則是呼叫端已經持有影像時的入口。要新增取樣路徑走 provider overload，不要在外面預查 `IsBusy`——那既漏掉 interval 條件，又在預查與提交之間留下競爭。
+- provider 丟例外時 `_busy` 一律清掉，`nextScanTime` 只在 generation 未變時回滾；沒清 `_busy` 會讓 scanner 永久卡住（沒有 decode 會來清它）。
 - `Start`/`Stop`/`Dispose` 以 generation 讓舊工作結果變成 `Discarded`；native 呼叫本身不強制中止。
 - 接受的 `Gray8Image.Buffer` 在 `ScanCompleted` 前屬借用狀態，不可改寫或回 pool。
 - scanner 建構時捕捉 `SynchronizationContext`；Unity 使用端必須在 main thread 建構，無 context 時事件在 worker thread 執行。
@@ -40,5 +42,6 @@
 
 - 套件內含已驗證的 Windows x86_64 與 Android arm64-v8a binary；`Native~` 重建時首次 configure 需要 Git/network。
 - API 不直接借用 `NativeArray<byte>`，因為 background lifetime 無法由 scanner 保證；Sample 明確複製 R8 raw data。
+- Sample 的 Texture 路徑複製 `GetRawTextureData<byte>()` 的前 `width * height` bytes——raw data 含所有 mip level，多複製的部分解碼用不到。buffer 來自 `ArrayPool<byte>.Shared`，記在一份 `HashSet<byte[]>` 帳上，`ScanCompleted` 只歸還帳上有的那條——`SubmitRawGray8` 的呼叫端 buffer 因此不會被誤還，`Remove` 也讓重複歸還不可能。**不能用單一欄位記**：`CompleteFrame` 先清 `_busy` 才觸發 `Detected`，所以事件處理器可以在 `ScanCompleted` 之前就再租一條，單欄位會被覆蓋而漏還前一條。`OnDestroy` 時在途的 buffer 直接丟掉不還，因為 decode 還在讀它。殘留配置只剩每次提交的 display class ＋ delegate（約 10^2 bytes），與整張影像不同量級。
 - managed downscale 的角點回推是整數倍近似；payload 解碼不受影響。
 - ROI 的兩層 1e-5 容差（`QRCodeRegion.BoundsTolerance`、`PixelRegion.PixelBoundaryTolerance`）都只吸收 float／rounding 誤差，判不出「整個 ROI 落在影像外」——那要影像尺寸才判得出來，所以唯一的拒絕點是 `PixelRegion.Resolve`：交集為空丟 `ArgumentException`，只有交集非空但不足一像素才補成一像素。native crop 與 managed downscale 吃同一個 `PixelRegion`，但只有 managed 那條真的索引 `Gray8Image.Buffer`，放寬這個檢查等於重新開啟越界讀取。
