@@ -70,6 +70,8 @@ namespace ZXingCpp.QRCode.Samples
                 // Raw texture data carries every mip level; only mip 0 reaches the decoder.
                 NativeArray<byte>.Copy(texture.GetRawTextureData<byte>(), 0, buffer, 0, mipLevel0Length);
                 var frame = new Gray8Image(buffer, texture.width, texture.height);
+                // Texture rows start at the displayed bottom; decode results are top-left-origin.
+                Gray8RowOrder.FlipVertically(frame);
                 _rentedFrameBuffers.Add(buffer);
                 return frame;
             }

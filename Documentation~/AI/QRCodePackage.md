@@ -5,7 +5,8 @@
 - UPM 唯一發布識別保留 `com.s46129.qrcode`，Git repository 為 `s46129/unity-zxingcpp-qrcode`；公開程式識別固定為 `ZXingCpp.QRCode`，不得把維護者帳號帶入 namespace、assembly 或 native build target。
 - 對外資料縫是 `IQRCodeDecoder`；native 實作與 EditMode fake decoder 都使用同一介面。
 - `QRCodeScanner` 不是 `MonoBehaviour`。Unity 宿主只負責取得 frame 與呼叫 `TrySubmitFrame`。
-- 輸入只接受 managed `byte[]` Gray8。完整 frame 與不縮圖 ROI 皆不複製；數值縮圖才租用 `ArrayPool<byte>`。
+- 輸入只接受 managed `byte[]` Gray8。完整 frame 與不縮圖 ROI 皆不複製；數值縮圖租用整張輸出大小的 `ArrayPool<byte>`，`Gray8RowOrder.FlipVertically` 租一條 row 當交換暫存。
+- 影像座標契約是左上角原點（`QRCodeRegion` 的 ROI、`QRCodePoint` 的角點都以它為準）：送進來的 raster 第一列就是最上列。套件不猜來源方向，也不帶方向旗標——bottom-up 來源由呼叫端先過 `Gray8RowOrder.FlipVertically` 轉正。
 - P/Invoke 直接對 upstream `ZXing` shared target 的 `ZXingC.h`，沒有自訂 C++ shim。
 
 ## 跨檔資料流
@@ -42,6 +43,7 @@
 
 - 套件內含已驗證的 Windows x86_64 與 Android arm64-v8a binary；`Native~` 重建時首次 configure 需要 Git/network。
 - API 不直接借用 `NativeArray<byte>`，因為 background lifetime 無法由 scanner 保證；Sample 明確複製 R8 raw data。
+- Unity `Texture2D` 的 raw data 是 bottom-up：第一列是畫面最下列，與 `GetPixels32` 同序。Sample 因此在複製後就地跑 `Gray8RowOrder.FlipVertically`，不做這步的話角點會落在畫面下緣、`Orientation` 差 90 度、`IsMirrored` 變 true，上半部 ROI 也會選到畫面下半（issue #4 的留言有 Editor 實測數據）。就地翻轉是為了不再開第二塊整張影像大小的 buffer，代價是一次額外的整張走訪加一條 row 暫存。相機 Y plane 多半已經是 top-down，`SubmitRawGray8` 不翻——`FlipVertically` 是無條件反轉，對已經 top-down 的來源呼叫會把方向弄反。
 - Sample 的 Texture 路徑複製 `GetRawTextureData<byte>()` 的前 `width * height` bytes——raw data 含所有 mip level，多複製的部分解碼用不到。buffer 來自 `ArrayPool<byte>.Shared`，記在一份 `HashSet<byte[]>` 帳上，`ScanCompleted` 只歸還帳上有的那條——`SubmitRawGray8` 的呼叫端 buffer 因此不會被誤還，`Remove` 也讓重複歸還不可能。**不能用單一欄位記**：`CompleteFrame` 先清 `_busy` 才觸發 `Detected`，所以事件處理器可以在 `ScanCompleted` 之前就再租一條，單欄位會被覆蓋而漏還前一條。`OnDestroy` 時在途的 buffer 直接丟掉不還，因為 decode 還在讀它。殘留配置只剩每次提交的 display class ＋ delegate（約 10^2 bytes），與整張影像不同量級。
 - managed downscale 的角點回推是整數倍近似；payload 解碼不受影響。
 - ROI 的兩層 1e-5 容差（`QRCodeRegion.BoundsTolerance`、`PixelRegion.PixelBoundaryTolerance`）都只吸收 float／rounding 誤差，判不出「整個 ROI 落在影像外」——那要影像尺寸才判得出來，所以唯一的拒絕點是 `PixelRegion.Resolve`：交集為空丟 `ArgumentException`，只有交集非空但不足一像素才補成一像素。native crop 與 managed downscale 吃同一個 `PixelRegion`，但只有 managed 那條真的索引 `Gray8Image.Buffer`，放寬這個檢查等於重新開啟越界讀取。

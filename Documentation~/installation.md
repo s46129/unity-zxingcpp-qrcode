@@ -44,6 +44,7 @@ For Android Player Settings, include ARM64 and use IL2CPP or Mono as required by
 - Prefer camera Y planes, `TextureFormat.R8`, or `TextureFormat.Alpha8` buffers.
 - `Gray8Image` accepts padded row stride and byte offset, which avoids repacking many camera planes.
 - `Texture2D.GetRawTextureData<byte>()` returns native-backed memory. The sample copies it once into `byte[]` because background work cannot safely borrow the `NativeArray` after the call site.
+- `QRCodeRegion` and `QRCodePoint` are measured from the image's top-left corner, and the decoder reads the first row of a `Gray8Image` as the top row. Texture rows arrive in the opposite order, so call `Gray8RowOrder.FlipVertically(frame)` on texture data before submitting it; otherwise corners land near the bottom edge, ROIs select the mirrored half, and `Orientation`/`IsMirrored` describe the flipped copy instead of the source.
 - Avoid `GetPixels32`; it creates an RGBA representation and adds a conversion before decoding.
 
 ## Troubleshooting
