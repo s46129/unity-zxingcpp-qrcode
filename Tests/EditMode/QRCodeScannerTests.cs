@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using NUnit.Framework;
 
@@ -125,6 +126,163 @@ namespace ZXingCpp.QRCode.Tests
             }
         }
 
+        [Test]
+        public void TrySubmitFrame_ProviderStopped_DoesNotInvokeProvider()
+        {
+            var decoder = new SequenceDecoder();
+            using (var scanner = CreateScanner(decoder, TimeSpan.Zero, false))
+            {
+                int calls = 0;
+                scanner.Start();
+                scanner.Stop();
+
+                Assert.That(scanner.TrySubmitFrame(() => CountingProvider(ref calls), 0d), Is.False);
+                Assert.That(calls, Is.Zero);
+                Assert.That(decoder.CallCount, Is.Zero);
+            }
+        }
+
+        [Test]
+        public void TrySubmitFrame_ProviderBusy_DoesNotInvokeProvider()
+        {
+            var decoder = new BlockingDecoder();
+            using (var scanner = CreateScanner(decoder, TimeSpan.Zero, false))
+            using (var completed = new ManualResetEventSlim())
+            {
+                int calls = 0;
+                scanner.ScanCompleted += _ => completed.Set();
+                scanner.Start();
+
+                Assert.That(scanner.TrySubmitFrame(() => CountingProvider(ref calls), 0d), Is.True);
+                Assert.That(decoder.Entered.Wait(3000), Is.True);
+                Assert.That(scanner.TrySubmitFrame(() => CountingProvider(ref calls), 0d), Is.False);
+                Assert.That(calls, Is.EqualTo(1));
+
+                decoder.Release.Set();
+                Assert.That(completed.Wait(3000), Is.True);
+            }
+        }
+
+        [Test]
+        public void TrySubmitFrame_ProviderIntervalNotElapsed_DoesNotInvokeProvider()
+        {
+            var decoder = new SequenceDecoder(null, null);
+            using (var scanner = CreateScanner(decoder, TimeSpan.FromSeconds(0.5), false))
+            {
+                int calls = 0;
+                scanner.Start();
+
+                Assert.That(scanner.TrySubmitFrame(() => CountingProvider(ref calls), 10d), Is.True);
+                Assert.That(SpinWait.SpinUntil(() => !scanner.IsBusy, 3000), Is.True);
+                Assert.That(scanner.TrySubmitFrame(() => CountingProvider(ref calls), 10.49d), Is.False);
+                Assert.That(calls, Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        public void TrySubmitFrame_ProviderAccepted_DecodesTheProvidedFrame()
+        {
+            var decoder = new SequenceDecoder();
+            var provided = new Gray8Image(new byte[16], 4, 4);
+            using (var scanner = CreateScanner(decoder, TimeSpan.Zero, false))
+            using (var completed = new ManualResetEventSlim())
+            {
+                QRCodeScanCompletion completion = null;
+                scanner.ScanCompleted += value =>
+                {
+                    completion = value;
+                    completed.Set();
+                };
+                scanner.Start();
+
+                Assert.That(scanner.TrySubmitFrame(() => provided, 0d), Is.True);
+                Assert.That(completed.Wait(3000), Is.True);
+                Assert.That(decoder.CallCount, Is.EqualTo(1));
+                Assert.That(decoder.LastBuffer, Is.SameAs(provided.Buffer));
+                Assert.That(completion.Frame.Buffer, Is.SameAs(provided.Buffer));
+            }
+        }
+
+        [Test]
+        public void TrySubmitFrame_ProviderThrows_ReleasesSlotWithoutConsumingInterval()
+        {
+            var decoder = new SequenceDecoder();
+            using (var scanner = CreateScanner(decoder, TimeSpan.FromSeconds(0.5), false))
+            using (var completed = new ManualResetEventSlim())
+            {
+                scanner.ScanCompleted += _ => completed.Set();
+                scanner.Start();
+
+                Assert.That(
+                    () => scanner.TrySubmitFrame(() => throw new InvalidOperationException("provider"), 10d),
+                    Throws.TypeOf<InvalidOperationException>());
+                Assert.That(scanner.IsBusy, Is.False);
+
+                Assert.That(scanner.TrySubmitFrame(Frame, 10d), Is.True);
+                Assert.That(completed.Wait(3000), Is.True);
+                Assert.That(decoder.CallCount, Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        public void TrySubmitFrame_NullProvider_Throws()
+        {
+            using (var scanner = CreateScanner(new SequenceDecoder(), TimeSpan.Zero, false))
+            {
+                scanner.Start();
+                Assert.That(
+                    () => scanner.TrySubmitFrame((Func<Gray8Image>)null, 0d),
+                    Throws.TypeOf<ArgumentNullException>());
+            }
+        }
+
+        [Test]
+        public void TrySubmitFrame_ProviderFrame_BufferStaysCheckedOutUntilScanCompleted()
+        {
+            var decoder = new BlockingDecoder();
+            var pool = new TrackingPool();
+            using (var scanner = CreateScanner(decoder, TimeSpan.Zero, false))
+            using (var completed = new ManualResetEventSlim())
+            {
+                byte[] borrowed = null;
+                int rejectedProviderCalls = 0;
+                scanner.ScanCompleted += completion =>
+                {
+                    pool.Return(completion.Frame.Buffer);
+                    completed.Set();
+                };
+                scanner.Start();
+
+                Assert.That(
+                    scanner.TrySubmitFrame(
+                        () =>
+                        {
+                            borrowed = pool.Rent(16);
+                            return new Gray8Image(borrowed, 4, 4);
+                        },
+                        0d),
+                    Is.True);
+                Assert.That(decoder.Entered.Wait(3000), Is.True);
+                Assert.That(pool.IsCheckedOut(borrowed), Is.True);
+
+                Assert.That(scanner.TrySubmitFrame(() => CountingProvider(ref rejectedProviderCalls), 0d), Is.False);
+                Assert.That(rejectedProviderCalls, Is.Zero);
+                Assert.That(pool.RentCount, Is.EqualTo(1));
+                Assert.That(pool.ReturnCount, Is.Zero);
+
+                decoder.Release.Set();
+                Assert.That(completed.Wait(3000), Is.True);
+                Assert.That(pool.IsCheckedOut(borrowed), Is.False);
+                Assert.That(pool.ReturnCount, Is.EqualTo(1));
+            }
+        }
+
+        private static Gray8Image CountingProvider(ref int calls)
+        {
+            Interlocked.Increment(ref calls);
+            return Frame;
+        }
+
         private static QRCodeScanner CreateScanner(IQRCodeDecoder decoder, TimeSpan interval, bool stopOnSuccess) =>
             new QRCodeScanner(
                 decoder,
@@ -160,15 +318,45 @@ namespace ZXingCpp.QRCode.Tests
 
             internal int CallCount => _callCount;
 
+            internal byte[] LastBuffer { get; private set; }
+
             public bool TryDecode(Gray8Image image, out QRCodeResult result) =>
                 TryDecode(image, new QRCodeDecodeOptions(), out result);
 
             public bool TryDecode(Gray8Image image, QRCodeDecodeOptions options, out QRCodeResult result)
             {
                 Interlocked.Increment(ref _callCount);
+                LastBuffer = image.Buffer;
                 _results.TryDequeue(out result);
                 return result != null;
             }
+        }
+
+        private sealed class TrackingPool
+        {
+            private readonly HashSet<byte[]> _checkedOut = new HashSet<byte[]>();
+
+            internal int RentCount { get; private set; }
+
+            internal int ReturnCount { get; private set; }
+
+            internal byte[] Rent(int minimumLength)
+            {
+                var buffer = new byte[minimumLength];
+                _checkedOut.Add(buffer);
+                RentCount++;
+                return buffer;
+            }
+
+            internal void Return(byte[] buffer)
+            {
+                if (!_checkedOut.Remove(buffer))
+                    throw new InvalidOperationException("The buffer was returned while it was not checked out.");
+
+                ReturnCount++;
+            }
+
+            internal bool IsCheckedOut(byte[] buffer) => _checkedOut.Contains(buffer);
         }
 
         private sealed class BlockingDecoder : IQRCodeDecoder

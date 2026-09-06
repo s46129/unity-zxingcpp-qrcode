@@ -88,26 +88,41 @@ namespace ZXingCpp.QRCode
 
         public bool TrySubmitFrame(Gray8Image frame, double timestampSeconds)
         {
-            if (double.IsNaN(timestampSeconds) || double.IsInfinity(timestampSeconds))
-                throw new ArgumentOutOfRangeException(nameof(timestampSeconds), "Timestamp must be finite.");
+            ValidateTimestamp(timestampSeconds);
 
-            int generation;
-            lock (_gate)
+            if (!TryClaimScanSlot(timestampSeconds, out int generation, out _))
+                return false;
+
+            StartDecode(frame, generation);
+            return true;
+        }
+
+        /// <summary>Submits a frame that <paramref name="frameProvider"/> builds only once the scan slot is claimed.</summary>
+        public bool TrySubmitFrame(Func<Gray8Image> frameProvider) =>
+            TrySubmitFrame(frameProvider, CurrentTimeSeconds());
+
+        /// <summary>Submits a frame that <paramref name="frameProvider"/> builds only once the scan slot is claimed.</summary>
+        public bool TrySubmitFrame(Func<Gray8Image> frameProvider, double timestampSeconds)
+        {
+            if (frameProvider == null)
+                throw new ArgumentNullException(nameof(frameProvider));
+            ValidateTimestamp(timestampSeconds);
+
+            if (!TryClaimScanSlot(timestampSeconds, out int generation, out double previousScanTime))
+                return false;
+
+            Gray8Image frame;
+            try
             {
-                ThrowIfDisposed();
-                if (!_running || _busy || timestampSeconds < _nextScanTime)
-                    return false;
-
-                _busy = true;
-                _nextScanTime = timestampSeconds + _options.ScanInterval.TotalSeconds;
-                generation = _generation;
+                frame = frameProvider();
+            }
+            catch
+            {
+                ReleaseScanSlot(generation, previousScanTime);
+                throw;
             }
 
-            Task.Run(() => DecodeFrame(frame)).ContinueWith(
-                task => Dispatch(() => CompleteFrame(frame, generation, task.Result)),
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+            StartDecode(frame, generation);
             return true;
         }
 
@@ -122,6 +137,49 @@ namespace ZXingCpp.QRCode
                 _running = false;
                 _generation++;
             }
+        }
+
+        private bool TryClaimScanSlot(double timestampSeconds, out int generation, out double previousScanTime)
+        {
+            lock (_gate)
+            {
+                ThrowIfDisposed();
+                generation = _generation;
+                previousScanTime = _nextScanTime;
+                if (!_running || _busy || timestampSeconds < _nextScanTime)
+                    return false;
+
+                _busy = true;
+                _nextScanTime = timestampSeconds + _options.ScanInterval.TotalSeconds;
+                return true;
+            }
+        }
+
+        private void ReleaseScanSlot(int generation, double previousScanTime)
+        {
+            lock (_gate)
+            {
+                _busy = false;
+                // A frame that never materialized must not push back the next scan; a newer
+                // generation already rewrote _nextScanTime, so leave that one alone.
+                if (generation == _generation)
+                    _nextScanTime = previousScanTime;
+            }
+        }
+
+        private void StartDecode(Gray8Image frame, int generation)
+        {
+            Task.Run(() => DecodeFrame(frame)).ContinueWith(
+                task => Dispatch(() => CompleteFrame(frame, generation, task.Result)),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+
+        private static void ValidateTimestamp(double timestampSeconds)
+        {
+            if (double.IsNaN(timestampSeconds) || double.IsInfinity(timestampSeconds))
+                throw new ArgumentOutOfRangeException(nameof(timestampSeconds), "Timestamp must be finite.");
         }
 
         private DecodeOutcome DecodeFrame(Gray8Image frame)
