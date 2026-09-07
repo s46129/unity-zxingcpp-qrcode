@@ -2,7 +2,9 @@
   "name": "ZXingCpp.QRCode.Sample.Basic",
   "rootNamespace": "ZXingCpp.QRCode.Samples",
   "references": [
-    "ZXingCpp.QRCode"
+    "ZXingCpp.QRCode",
+    "Unity.TextMeshPro",
+    "UnityEngine.UI"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

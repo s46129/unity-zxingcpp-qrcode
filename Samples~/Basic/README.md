@@ -1,9 +1,20 @@
 # Basic Gray8 Decode sample
 
 1. Import this sample from Package Manager.
-2. Create a GameObject and add `QRCodeSampleRunner`.
-3. Assign a readable `Texture2D` whose format is `R8` or `Alpha8`.
-4. Enter Play Mode. The decode runs in the background and logs its result.
+2. Open `BasicGray8Decode.unity` and enter Play Mode. The scene shows the source texture in a `RawImage` and, once the background decode finishes, prints the payload, the four corner points, orientation and mirroring in the label below it. The same result is also logged to the Console.
+3. To see a QR that is not centred, set the runner's **Source Texture** to `Textures/QRCodeSample_TopLeft` and play again — the top-left corner should read close to `(16, 16)`.
+
+Both textures are single-channel `R8`, so `RawImage` renders them through the red channel only; the red tint is expected and has nothing to do with the decode. The decoder never sees colour — it reads the same bytes that `Gray8Image` wraps.
+
+To use the runner in your own scene instead: add `QRCodeSampleRunner` to a GameObject, assign a readable `Texture2D` whose format is `R8` or `Alpha8`, and optionally a `TMP_Text` for **Result Label**.
+
+## Webcam
+
+Open `WebcamDecode.unity` and enter Play Mode. The runner starts the default `WebCamTexture` (set **Webcam Device Name** to pick another camera; leave it empty for the default), shows it in the `RawImage`, and submits a frame whenever the camera delivers a new one. **Stop On Success** is off in this scene so it keeps scanning. The small label in the top-left corner shows the rendered FPS and how many scans complete per second.
+
+Each accepted frame is converted from RGBA to Gray8 on the main thread (integer Rec. 601 luma) into an `ArrayPool<byte>` buffer, then flipped with `Gray8RowOrder.FlipVertically` because `WebCamTexture` rows start at the displayed bottom like every Unity texture. The conversion runs only after the scanner accepts the frame, so frames dropped by the scan interval cost nothing beyond the submit call.
+
+Camera permission on Android/iOS and `WebCamTexture.videoRotationAngle` / `videoVerticallyMirrored` handling are left to the app; this sample assumes a desktop camera that delivers upright frames.
 
 For a camera Y plane or another raw source, call:
 

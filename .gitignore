@@ -13,3 +13,4 @@
 *.user
 Native~/build/
 Native~/build-*/
+docs
