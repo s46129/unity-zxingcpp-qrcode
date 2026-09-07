@@ -18,11 +18,12 @@ if (-not (Test-Path -LiteralPath $toolchain)) {
 $nativeRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $buildRoot = Join-Path $nativeRoot 'build/android-arm64-v8a'
 
+# Windows PowerShell parses a bare -D...=$var as a parameter token and passes the '$var' literally; the quotes force expansion.
 cmake -S $nativeRoot -B $buildRoot -G Ninja `
-    -DCMAKE_TOOLCHAIN_FILE=$toolchain `
-    -DANDROID_ABI=arm64-v8a `
-    -DANDROID_PLATFORM="android-$AndroidApi" `
-    -DCMAKE_BUILD_TYPE=$Configuration
+    "-DCMAKE_TOOLCHAIN_FILE=$toolchain" `
+    "-DANDROID_ABI=arm64-v8a" `
+    "-DANDROID_PLATFORM=android-$AndroidApi" `
+    "-DCMAKE_BUILD_TYPE=$Configuration"
 if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed.' }
 
 cmake --build $buildRoot --parallel
