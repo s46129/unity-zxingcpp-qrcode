@@ -41,13 +41,14 @@
 - Windows 使用 static MSVC runtime，避免 Player 另外安裝 Visual C++ Redistributable。
 - Android 明確靜態連結 `c++_static`/`c++abi`，避開新版 NDK 搭 Unity 內附舊 CMake 時漏掉 libc++ 的 link line。
 - 升級 upstream 時必須同步核對 `ZXingC.h`、P/Invoke ownership、format ID 與兩平台 binary exports。
+- `ZXingCppQRCodeDecoderTests` 是唯一真的載入 binary 的測試（inline 一張 version 1-L「TOPLEFT」模組矩陣，4 倍放大、4 module quiet zone、放進 256×256 畫面左上角），因此升 upstream 或改前處理時它是第一個會紅的地方；ABI 對不上會以 `QRCodeNativeException` 收場，不是靜默略過。套件只出 Windows x86_64 與 Android arm64-v8a binary，所以它在非 Windows-x64 Editor `Assert.Ignore`（用 `RuntimeInformation`，測試 asmdef 是 `noEngineReferences`，拿不到 `Application.platform`），在 Windows-x64 Editor 則硬跑，載入失敗即失敗。
 
 ## 已知限制
 
 - `Post` 成功回傳、callback 卻永遠不被 pump（context 已拆掉、domain reload）偵測不到：沒有例外可接，`_busy` 仍會永久留在 `true`，租用的 buffer 也收不回來。要處理得加逾時 watchdog，見 issue #7。
 - 套件內含已驗證的 Windows x86_64 與 Android arm64-v8a binary；`Native~` 重建時首次 configure 需要 Git/network。
 - API 不直接借用 `NativeArray<byte>`，因為 background lifetime 無法由 scanner 保證；Sample 明確複製 R8 raw data。
-- Unity `Texture2D` 的 raw data 是 bottom-up：第一列是畫面最下列，與 `GetPixels32` 同序。Sample 因此在複製後就地跑 `Gray8RowOrder.FlipVertically`，不做這步的話角點會落在畫面下緣、`Orientation` 差 90 度、`IsMirrored` 變 true，上半部 ROI 也會選到畫面下半（issue #4 的留言有 Editor 實測數據）。就地翻轉是為了不再開第二塊整張影像大小的 buffer，代價是一次額外的整張走訪加一條 row 暫存。相機 Y plane 多半已經是 top-down，`SubmitRawGray8` 不翻——`FlipVertically` 是無條件反轉，對已經 top-down 的來源呼叫會把方向弄反。
+- Unity `Texture2D` 的 raw data 是 bottom-up：第一列是畫面最下列，與 `GetPixels32` 同序。Sample 因此在複製後就地跑 `Gray8RowOrder.FlipVertically`，不做這步的話角點會落在畫面下緣、`Orientation` 差 90 度、`IsMirrored` 變 true，上半部 ROI 也會選到畫面下半（`ZXingCppQRCodeDecoderTests` 的 bottom-up 兩條測試把這個症狀鎖住，issue #4 的留言有原始實測數據）。就地翻轉是為了不再開第二塊整張影像大小的 buffer，代價是一次額外的整張走訪加一條 row 暫存。相機 Y plane 多半已經是 top-down，`SubmitRawGray8` 不翻——`FlipVertically` 是無條件反轉，對已經 top-down 的來源呼叫會把方向弄反。
 - Sample 的 Texture 路徑複製 `GetRawTextureData<byte>()` 的前 `width * height` bytes——raw data 含所有 mip level，多複製的部分解碼用不到。buffer 來自 `ArrayPool<byte>.Shared`，記在一份 `HashSet<byte[]>` 帳上，`ScanCompleted` 只歸還帳上有的那條——`SubmitRawGray8` 的呼叫端 buffer 因此不會被誤還，`Remove` 也讓重複歸還不可能。**不能用單一欄位記**：`CompleteFrame` 先清 `_busy` 才觸發 `Detected`，所以事件處理器可以在 `ScanCompleted` 之前就再租一條，單欄位會被覆蓋而漏還前一條。`OnDestroy` 時在途的 buffer 直接丟掉不還，因為 decode 還在讀它。殘留配置只剩每次提交的 display class ＋ delegate（約 10^2 bytes），與整張影像不同量級。
 - managed downscale 的角點回推是整數倍近似；payload 解碼不受影響。
 - ROI 的兩層 1e-5 容差（`QRCodeRegion.BoundsTolerance`、`PixelRegion.PixelBoundaryTolerance`）都只吸收 float／rounding 誤差，判不出「整個 ROI 落在影像外」——那要影像尺寸才判得出來，所以唯一的拒絕點是 `PixelRegion.Resolve`：交集為空丟 `ArgumentException`，只有交集非空但不足一像素才補成一像素。native crop 與 managed downscale 吃同一個 `PixelRegion`，但只有 managed 那條真的索引 `Gray8Image.Buffer`，放寬這個檢查等於重新開啟越界讀取。
