@@ -40,6 +40,8 @@
 - CMake pin: `v3.1.0` / `885baaf0840335153c1a487fa65f9c1388702c81`；讀取器 ON、writers 與非 QR formats OFF、`ZXING_C_API=ON`、shared library ON。
 - Windows 使用 static MSVC runtime，避免 Player 另外安裝 Visual C++ Redistributable。
 - Android 明確靜態連結 `c++_static`/`c++abi`，避開新版 NDK 搭 Unity 內附舊 CMake 時漏掉 libc++ 的 link line。
+- Android binary 的 `PT_LOAD` segment 對齊 16 KB（`-Wl,-z,max-page-size=16384`／`-Wl,-z,common-page-size=16384`），否則 16 KB page-size 裝置載不起 plugin。NDK 只有在 `ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES` 開著時才自己加這兩個旗標，所以 `Native~/CMakeLists.txt` 直接寫死；`CopyZXingPlugin` 在 strip 之後跑 `Native~/cmake/CheckElfAlignment.cmake`（純 CMake 解析 program header，不依賴 readelf），對齊退回 4 KB 就讓 build 失敗。
+- `Native~/build-android.ps1` 的 `-D...=$var` 一定要用雙引號包起來：Windows PowerShell 5.1 把裸露的 `-D...=$var` 當參數名，`$var` 會原樣傳給 cmake。
 - 升級 upstream 時必須同步核對 `ZXingC.h`、P/Invoke ownership、format ID 與兩平台 binary exports。
 - `ZXingCppQRCodeDecoderTests` 是唯一真的載入 binary 的測試（inline 一張 version 1-L「TOPLEFT」模組矩陣，4 倍放大、4 module quiet zone、放進 256×256 畫面左上角），因此升 upstream 或改前處理時它是第一個會紅的地方；ABI 對不上會以 `QRCodeNativeException` 收場，不是靜默略過。套件只出 Windows x86_64 與 Android arm64-v8a binary，所以它在非 Windows-x64 Editor `Assert.Ignore`（用 `RuntimeInformation`，測試 asmdef 是 `noEngineReferences`，拿不到 `Application.platform`），在 Windows-x64 Editor 則硬跑，載入失敗即失敗。
 
