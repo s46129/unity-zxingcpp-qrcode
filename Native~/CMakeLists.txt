@@ -42,6 +42,8 @@ elseif(ANDROID)
     endif()
     # Unity can pair a newer NDK with an older bundled CMake that omits libc++ from shared-library link lines.
     target_link_libraries(ZXing PRIVATE c++_static c++abi)
+    # 16 KB page-size devices reject 4 KB-aligned segments; the NDK only passes these when ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES is set.
+    target_link_options(ZXing PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,-z,common-page-size=16384")
     set(QRCODE_PLUGIN_DIR "${QRCODE_PACKAGE_ROOT}/Runtime/Plugins/Android/arm64-v8a")
 else()
     message(FATAL_ERROR "This package build supports only Windows and Android.")
@@ -53,8 +55,9 @@ if(ANDROID)
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${QRCODE_PLUGIN_DIR}"
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:ZXing>" "${QRCODE_PLUGIN_DIR}/$<TARGET_FILE_NAME:ZXing>"
         COMMAND "${CMAKE_STRIP}" --strip-unneeded "${QRCODE_PLUGIN_DIR}/$<TARGET_FILE_NAME:ZXing>"
+        COMMAND "${CMAKE_COMMAND}" "-DELF_FILE=${QRCODE_PLUGIN_DIR}/$<TARGET_FILE_NAME:ZXing>" -P "${CMAKE_CURRENT_LIST_DIR}/cmake/CheckElfAlignment.cmake"
         DEPENDS ZXing
-        COMMENT "Copying and stripping ZXing native plugin into the Unity package"
+        COMMENT "Copying, stripping and 16 KB alignment-checking ZXing native plugin into the Unity package"
     )
 else()
     add_custom_target(
