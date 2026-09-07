@@ -170,11 +170,16 @@ namespace ZXingCpp.QRCode
 
         private void StartDecode(Gray8Image frame, int generation)
         {
-            Task.Run(() => DecodeFrame(frame)).ContinueWith(
-                task => Dispatch(() => CompleteFrame(frame, generation, task.Result)),
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+            var accepted = new AcceptedFrame(frame, generation);
+            try
+            {
+                // Dispatching from inside the worker is what makes a scheduling failure mean "no decode is running".
+                Task.Run(() => CompleteOnCallbackContext(accepted, DecodeFrame(frame)));
+            }
+            catch (Exception exception)
+            {
+                CompleteOnCallbackContext(accepted, new DecodeOutcome(null, exception));
+            }
         }
 
         private static void ValidateTimestamp(double timestampSeconds)
@@ -196,18 +201,22 @@ namespace ZXingCpp.QRCode
             }
         }
 
-        private void CompleteFrame(Gray8Image frame, int generation, DecodeOutcome outcome)
+        private void CompleteFrame(AcceptedFrame accepted, DecodeOutcome outcome)
         {
+            // A callback context may queue the completion and still throw, so the frame decides who completes it.
+            if (!accepted.TryClaimCompletion())
+                return;
+
             bool active;
             lock (_gate)
             {
                 _busy = false;
-                active = !_disposed && _running && generation == _generation;
+                active = !_disposed && _running && accepted.Generation == _generation;
                 if (active && outcome.Result != null && _options.StopOnSuccess)
                     _running = false;
             }
 
-            var completion = new QRCodeScanCompletion(frame, outcome.Result, outcome.Error, !active);
+            var completion = new QRCodeScanCompletion(accepted.Frame, outcome.Result, outcome.Error, !active);
             try
             {
                 if (!active)
@@ -223,12 +232,23 @@ namespace ZXingCpp.QRCode
             }
         }
 
-        private void Dispatch(Action callback)
+        private void CompleteOnCallbackContext(AcceptedFrame accepted, DecodeOutcome outcome)
         {
             if (_callbackContext == null)
-                callback();
-            else
-                _callbackContext.Post(_ => callback(), null);
+            {
+                CompleteFrame(accepted, outcome);
+                return;
+            }
+
+            try
+            {
+                _callbackContext.Post(_ => CompleteFrame(accepted, outcome), null);
+            }
+            catch (Exception exception)
+            {
+                // A completion the context refuses would strand _busy and the caller's borrowed buffer.
+                CompleteFrame(accepted, new DecodeOutcome(outcome.Result, outcome.Error ?? exception));
+            }
         }
 
         private void ThrowIfDisposed()
@@ -250,6 +270,23 @@ namespace ZXingCpp.QRCode
             internal QRCodeResult Result { get; }
 
             internal Exception Error { get; }
+        }
+
+        private sealed class AcceptedFrame
+        {
+            private int _completed;
+
+            internal AcceptedFrame(Gray8Image frame, int generation)
+            {
+                Frame = frame;
+                Generation = generation;
+            }
+
+            internal Gray8Image Frame { get; }
+
+            internal int Generation { get; }
+
+            internal bool TryClaimCompletion() => Interlocked.Exchange(ref _completed, 1) == 0;
         }
     }
 }

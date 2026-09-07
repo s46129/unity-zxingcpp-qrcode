@@ -24,9 +24,12 @@
 - 只有接受 frame 時才推進 `nextScanTime`，避免 busy drop 延後下一次有效掃描。
 - 拒絕一個 frame 必須是零影像成本。`TrySubmitFrame(Func<Gray8Image>)` 在 `_gate` 內判完 running／busy／interval 才呼叫 provider，所以呼叫端無法在被拒的路徑上付出複製成本；`TrySubmitFrame(Gray8Image)` 則是呼叫端已經持有影像時的入口。要新增取樣路徑走 provider overload，不要在外面預查 `IsBusy`——那既漏掉 interval 條件，又在預查與提交之間留下競爭。
 - provider 丟例外時 `_busy` 一律清掉，`nextScanTime` 只在 generation 未變時回滾；沒清 `_busy` 會讓 scanner 永久卡住（沒有 decode 會來清它）。
+- 被接受的 frame 只完成一次：`AcceptedFrame` 帶一個 `Interlocked` 完成閂，`CompleteFrame` 先搶到才做事。`SynchronizationContext.Post` 可以先把 callback 排進佇列再丟例外，於是佇列裡那份與 catch 裡那份會同時想完成同一個 frame；完成兩次會清掉**下一個** frame 的 `_busy`（兩個 decode 重疊）並把同一條 buffer 歸還兩次。
+- decode 與完成分派同在一個 `Task.Run` body，所以不存在「decode 在跑、但沒有完成會跟上」的狀態；`Task.Run` 自己丟例外＝沒有 worker 起來，該 frame 就地以那個例外完成，只清 `_busy` 反而會讓兩個 decode 重疊。
+- callback context 的 `Post` 丟例外時改在當前執行緒完成：`outcome.Result` 保留（`StopOnSuccess` 照常生效、`QRCodeScanCompletion.Result` 拿得到），`Error` 只在 decode 本身沒失敗時才換成 dispatch 例外，所以那種情況是 `DecodeFailed` 觸發、`Detected` 不觸發。代價是事件跑在 worker thread 上，但比 `_busy` 卡死、呼叫端 buffer 永遠收不回來好。
 - `Start`/`Stop`/`Dispose` 以 generation 讓舊工作結果變成 `Discarded`；native 呼叫本身不強制中止。
 - 接受的 `Gray8Image.Buffer` 在 `ScanCompleted` 前屬借用狀態，不可改寫或回 pool。
-- scanner 建構時捕捉 `SynchronizationContext`；Unity 使用端必須在 main thread 建構，無 context 時事件在 worker thread 執行。
+- scanner 建構時捕捉 `SynchronizationContext`；Unity 使用端必須在 main thread 建構，無 context 時事件在 worker thread 執行。context 的 `Post` 丟例外時，事件同樣退回 worker thread。
 
 ## 原生耦合
 
@@ -41,6 +44,7 @@
 
 ## 已知限制
 
+- `Post` 成功回傳、callback 卻永遠不被 pump（context 已拆掉、domain reload）偵測不到：沒有例外可接，`_busy` 仍會永久留在 `true`，租用的 buffer 也收不回來。要處理得加逾時 watchdog，見 issue #7。
 - 套件內含已驗證的 Windows x86_64 與 Android arm64-v8a binary；`Native~` 重建時首次 configure 需要 Git/network。
 - API 不直接借用 `NativeArray<byte>`，因為 background lifetime 無法由 scanner 保證；Sample 明確複製 R8 raw data。
 - Unity `Texture2D` 的 raw data 是 bottom-up：第一列是畫面最下列，與 `GetPixels32` 同序。Sample 因此在複製後就地跑 `Gray8RowOrder.FlipVertically`，不做這步的話角點會落在畫面下緣、`Orientation` 差 90 度、`IsMirrored` 變 true，上半部 ROI 也會選到畫面下半（issue #4 的留言有 Editor 實測數據）。就地翻轉是為了不再開第二塊整張影像大小的 buffer，代價是一次額外的整張走訪加一條 row 暫存。相機 Y plane 多半已經是 top-down，`SubmitRawGray8` 不翻——`FlipVertically` 是無條件反轉，對已經 top-down 的來源呼叫會把方向弄反。

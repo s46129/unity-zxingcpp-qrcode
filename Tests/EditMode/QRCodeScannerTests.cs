@@ -10,11 +10,13 @@ namespace ZXingCpp.QRCode.Tests
     {
         private static readonly Gray8Image Frame = new Gray8Image(new byte[16], 4, 4);
 
-        [Test]
-        public void TrySubmitFrame_Busy_DropsSecondFrame()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TrySubmitFrame_Busy_DropsSecondFrame(bool callbackContextThrows)
         {
             var decoder = new BlockingDecoder();
-            using (var scanner = CreateScanner(decoder, TimeSpan.Zero, false))
+            SynchronizationContext context = callbackContextThrows ? new ThrowingSynchronizationContext() : null;
+            using (var scanner = CreateScanner(decoder, TimeSpan.Zero, false, context))
             using (var completed = new ManualResetEventSlim())
             {
                 scanner.ScanCompleted += _ => completed.Set();
@@ -350,13 +352,158 @@ namespace ZXingCpp.QRCode.Tests
             }
         }
 
+        [Test]
+        public void TrySubmitFrame_CallbackContextThrows_CompletesFrameAndReturnsTheBuffer()
+        {
+            var decoder = new SequenceDecoder();
+            var ledger = new BufferLedger();
+            using (var scanner = CreateScanner(decoder, TimeSpan.Zero, false, new ThrowingSynchronizationContext()))
+            using (var completed = new ManualResetEventSlim())
+            {
+                Exception failure = null;
+                QRCodeScanCompletion completion = null;
+                byte[] borrowed = null;
+                scanner.DecodeFailed += exception => failure = exception;
+                scanner.ScanCompleted += value =>
+                {
+                    completion = value;
+                    ledger.CheckIn(value.Frame.Buffer);
+                    completed.Set();
+                };
+                scanner.Start();
+
+                Assert.That(
+                    scanner.TrySubmitFrame(
+                        () =>
+                        {
+                            borrowed = ledger.CheckOut(16);
+                            return new Gray8Image(borrowed, 4, 4);
+                        },
+                        0d),
+                    Is.True);
+
+                Assert.That(completed.Wait(3000), Is.True);
+                Assert.That(ledger.IsCheckedOut(borrowed), Is.False);
+                Assert.That(failure, Is.TypeOf<InvalidOperationException>());
+                Assert.That(completion.Error, Is.SameAs(failure));
+                Assert.That(completion.Discarded, Is.False);
+                Assert.That(scanner.IsBusy, Is.False);
+            }
+        }
+
+        [Test]
+        public void TrySubmitFrame_AfterCallbackContextThrew_AcceptsTheNextFrame()
+        {
+            var decoder = new SequenceDecoder(null, null);
+            using (var scanner = CreateScanner(decoder, TimeSpan.Zero, false, new ThrowingSynchronizationContext()))
+            using (var completed = new CountdownEvent(2))
+            {
+                scanner.ScanCompleted += _ => completed.Signal();
+                scanner.Start();
+
+                Assert.That(scanner.TrySubmitFrame(Frame, 0d), Is.True);
+                Assert.That(SpinWait.SpinUntil(() => !scanner.IsBusy, 3000), Is.True);
+                Assert.That(scanner.TrySubmitFrame(Frame, 0d), Is.True);
+                Assert.That(completed.Wait(3000), Is.True);
+                Assert.That(decoder.CallCount, Is.EqualTo(2));
+            }
+        }
+
+        [Test]
+        public void TrySubmitFrame_CallbackContextAvailable_CompletesThroughItExactlyOnce()
+        {
+            var decoder = new SequenceDecoder();
+            var context = new RecordingSynchronizationContext();
+            using (var scanner = CreateScanner(decoder, TimeSpan.Zero, false, context))
+            using (var completed = new ManualResetEventSlim())
+            {
+                int completions = 0;
+                scanner.ScanCompleted += _ =>
+                {
+                    Interlocked.Increment(ref completions);
+                    completed.Set();
+                };
+                scanner.Start();
+
+                Assert.That(scanner.TrySubmitFrame(Frame, 0d), Is.True);
+                Assert.That(completed.Wait(3000), Is.True);
+                Assert.That(context.PostCount, Is.EqualTo(1));
+                Assert.That(Volatile.Read(ref completions), Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        public void TrySubmitFrame_CallbackContextThrows_KeepsTheDecodedResultOnTheCompletion()
+        {
+            QRCodeResult expected = CreateResult("dispatch");
+            var decoder = new SequenceDecoder(expected);
+            using (var scanner = CreateScanner(decoder, TimeSpan.Zero, false, new ThrowingSynchronizationContext()))
+            using (var completed = new ManualResetEventSlim())
+            {
+                QRCodeScanCompletion completion = null;
+                bool detected = false;
+                scanner.Detected += _ => detected = true;
+                scanner.ScanCompleted += value =>
+                {
+                    completion = value;
+                    completed.Set();
+                };
+                scanner.Start();
+
+                Assert.That(scanner.TrySubmitFrame(Frame, 0d), Is.True);
+                Assert.That(completed.Wait(3000), Is.True);
+                Assert.That(completion.Result, Is.SameAs(expected));
+                Assert.That(completion.Error, Is.TypeOf<InvalidOperationException>());
+                Assert.That(detected, Is.False);
+            }
+        }
+
+        [Test]
+        public void TrySubmitFrame_CallbackContextPostsThenThrows_CompletesTheFrameOnce()
+        {
+            var decoder = new SequenceDecoder();
+            var ledger = new BufferLedger();
+            using (var scanner = CreateScanner(decoder, TimeSpan.Zero, false, new PostThenThrowSynchronizationContext()))
+            using (var completed = new ManualResetEventSlim())
+            {
+                int completions = 0;
+                byte[] borrowed = null;
+                scanner.ScanCompleted += value =>
+                {
+                    Interlocked.Increment(ref completions);
+                    ledger.CheckIn(value.Frame.Buffer);
+                    completed.Set();
+                };
+                scanner.Start();
+
+                Assert.That(
+                    scanner.TrySubmitFrame(
+                        () =>
+                        {
+                            borrowed = ledger.CheckOut(16);
+                            return new Gray8Image(borrowed, 4, 4);
+                        },
+                        0d),
+                    Is.True);
+
+                Assert.That(completed.Wait(3000), Is.True);
+                Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref completions) > 1, 200), Is.False);
+                Assert.That(ledger.CheckInCount, Is.EqualTo(1));
+                Assert.That(scanner.IsBusy, Is.False);
+            }
+        }
+
         private static Gray8Image CountingProvider(ref int calls)
         {
             Interlocked.Increment(ref calls);
             return Frame;
         }
 
-        private static QRCodeScanner CreateScanner(IQRCodeDecoder decoder, TimeSpan interval, bool stopOnSuccess) =>
+        private static QRCodeScanner CreateScanner(
+            IQRCodeDecoder decoder,
+            TimeSpan interval,
+            bool stopOnSuccess,
+            SynchronizationContext callbackContext = null) =>
             new QRCodeScanner(
                 decoder,
                 new QRCodeScannerOptions
@@ -364,7 +511,7 @@ namespace ZXingCpp.QRCode.Tests
                     ScanInterval = interval,
                     StopOnSuccess = stopOnSuccess
                 },
-                null);
+                callbackContext);
 
         private static QRCodeResult CreateResult(string text) =>
             new QRCodeResult(
@@ -466,6 +613,34 @@ namespace ZXingCpp.QRCode.Tests
             {
                 result = null;
                 throw new InvalidOperationException("Expected test failure.");
+            }
+        }
+
+        private sealed class ThrowingSynchronizationContext : SynchronizationContext
+        {
+            public override void Post(SendOrPostCallback d, object state) =>
+                throw new InvalidOperationException("Expected test dispatch failure.");
+        }
+
+        private sealed class RecordingSynchronizationContext : SynchronizationContext
+        {
+            private int _postCount;
+
+            internal int PostCount => Volatile.Read(ref _postCount);
+
+            public override void Post(SendOrPostCallback d, object state)
+            {
+                Interlocked.Increment(ref _postCount);
+                d(state);
+            }
+        }
+
+        private sealed class PostThenThrowSynchronizationContext : SynchronizationContext
+        {
+            public override void Post(SendOrPostCallback d, object state)
+            {
+                d(state);
+                throw new InvalidOperationException("Expected test dispatch failure after queueing.");
             }
         }
     }
