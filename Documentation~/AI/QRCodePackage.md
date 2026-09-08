@@ -27,6 +27,7 @@
 - 被接受的 frame 只完成一次：`AcceptedFrame` 帶一個 `Interlocked` 完成閂，`CompleteFrame` 先搶到才做事。`SynchronizationContext.Post` 可以先把 callback 排進佇列再丟例外，於是佇列裡那份與 catch 裡那份會同時想完成同一個 frame；完成兩次會清掉**下一個** frame 的 `_busy`（兩個 decode 重疊）並把同一條 buffer 歸還兩次。
 - decode 與完成分派同在一個 `Task.Run` body，所以不存在「decode 在跑、但沒有完成會跟上」的狀態；`Task.Run` 自己丟例外＝沒有 worker 起來，該 frame 就地以那個例外完成，只清 `_busy` 反而會讓兩個 decode 重疊。
 - callback context 的 `Post` 丟例外時改在當前執行緒完成：`outcome.Result` 保留（`StopOnSuccess` 照常生效、`QRCodeScanCompletion.Result` 拿得到），`Error` 只在 decode 本身沒失敗時才換成 dispatch 例外，所以那種情況是 `DecodeFailed` 觸發、`Detected` 不觸發。代價是事件跑在 worker thread 上，但比 `_busy` 卡死、呼叫端 buffer 永遠收不回來好。
+- `SuppressRepeats` 開啟時 `Detected` 只在 payload 與上一次不同時觸發；連續 `MissesBeforeReset` 次「有掃、沒結果」才清掉上一次 payload，decode 例外不算 miss。狀態（`_lastDetectedText`／`_missStreak`）由 `TrackRepeat` 在 `_gate` 內更新，因為 callback context 拒絕時完成會落在 worker thread。`Start` 重置狀態；`ScanCompleted` 不受影響、每次照發，所以呼叫端仍能靠它算掃描頻率。預設關，既有呼叫端行為不變。
 - `Start`/`Stop`/`Dispose` 以 generation 讓舊工作結果變成 `Discarded`；native 呼叫本身不強制中止。
 - 接受的 `Gray8Image.Buffer` 在 `ScanCompleted` 前屬借用狀態，不可改寫或回 pool。
 - scanner 建構時捕捉 `SynchronizationContext`；Unity 使用端必須在 main thread 建構，無 context 時事件在 worker thread 執行。context 的 `Post` 丟例外時，事件同樣退回 worker thread。

@@ -15,6 +15,8 @@ namespace ZXingCpp.QRCode.Samples
         [SerializeField] private TMP_Text statsLabel;
         [SerializeField, Min(0f)] private float scanIntervalSeconds = 0.2f;
         [SerializeField] private bool stopOnSuccess = true;
+        [SerializeField] private bool suppressRepeats;
+        [SerializeField, Min(1)] private int missesBeforeReset = 3;
         [SerializeField, Range(1, 4)] private int downscaleFactor = 1;
 
         [Header("Webcam")]
@@ -42,6 +44,8 @@ namespace ZXingCpp.QRCode.Samples
             {
                 ScanInterval = TimeSpan.FromSeconds(scanIntervalSeconds),
                 StopOnSuccess = stopOnSuccess,
+                SuppressRepeats = suppressRepeats,
+                MissesBeforeReset = missesBeforeReset,
                 DecodeOptions = new QRCodeDecodeOptions
                 {
                     DownscaleFactor = downscaleFactor,

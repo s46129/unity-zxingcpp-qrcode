@@ -17,6 +17,8 @@ namespace ZXingCpp.QRCode
         private bool _disposed;
         private double _nextScanTime;
         private int _generation;
+        private string _lastDetectedText;
+        private int _missStreak;
 
         public QRCodeScanner(IQRCodeDecoder decoder, QRCodeScannerOptions options = null)
             : this(decoder, options, SynchronizationContext.Current)
@@ -68,6 +70,8 @@ namespace ZXingCpp.QRCode
 
                 _running = true;
                 _nextScanTime = double.NegativeInfinity;
+                _lastDetectedText = null;
+                _missStreak = 0;
                 _generation++;
             }
         }
@@ -208,12 +212,16 @@ namespace ZXingCpp.QRCode
                 return;
 
             bool active;
+            bool raiseDetected;
             lock (_gate)
             {
                 _busy = false;
                 active = !_disposed && _running && accepted.Generation == _generation;
                 if (active && outcome.Result != null && _options.StopOnSuccess)
                     _running = false;
+                raiseDetected = active && outcome.Error == null && outcome.Result != null;
+                if (active && outcome.Error == null && _options.SuppressRepeats)
+                    raiseDetected = TrackRepeat(outcome.Result);
             }
 
             var completion = new QRCodeScanCompletion(accepted.Frame, outcome.Result, outcome.Error, !active);
@@ -223,13 +231,34 @@ namespace ZXingCpp.QRCode
                     return;
                 if (outcome.Error != null)
                     DecodeFailed?.Invoke(outcome.Error);
-                else if (outcome.Result != null)
+                else if (raiseDetected)
                     Detected?.Invoke(outcome.Result);
             }
             finally
             {
                 ScanCompleted?.Invoke(completion);
             }
+        }
+
+        // Runs under _gate: a refused callback context completes frames on the worker thread.
+        private bool TrackRepeat(QRCodeResult result)
+        {
+            if (result == null)
+            {
+                if (++_missStreak >= _options.MissesBeforeReset)
+                {
+                    _lastDetectedText = null;
+                    _missStreak = 0;
+                }
+                return false;
+            }
+
+            _missStreak = 0;
+            if (result.Text == _lastDetectedText)
+                return false;
+
+            _lastDetectedText = result.Text;
+            return true;
         }
 
         private void CompleteOnCallbackContext(AcceptedFrame accepted, DecodeOutcome outcome)

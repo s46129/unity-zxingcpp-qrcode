@@ -493,6 +493,118 @@ namespace ZXingCpp.QRCode.Tests
             }
         }
 
+        [Test]
+        public void SuppressRepeats_SamePayloadTwice_RaisesDetectedOnce()
+        {
+            var decoder = new SequenceDecoder(CreateResult("a"), CreateResult("a"));
+            using (var scanner = CreateScanner(decoder, SuppressingOptions(3)))
+            {
+                int detected = 0;
+                scanner.Detected += _ => Interlocked.Increment(ref detected);
+                scanner.Start();
+
+                SubmitAndAwaitCompletion(scanner);
+                SubmitAndAwaitCompletion(scanner);
+
+                Assert.That(Volatile.Read(ref detected), Is.EqualTo(1));
+                Assert.That(decoder.CallCount, Is.EqualTo(2));
+            }
+        }
+
+        [Test]
+        public void SuppressRepeats_DifferentPayload_RaisesDetectedAgain()
+        {
+            var decoder = new SequenceDecoder(CreateResult("a"), CreateResult("b"));
+            using (var scanner = CreateScanner(decoder, SuppressingOptions(3)))
+            {
+                var texts = new ConcurrentQueue<string>();
+                scanner.Detected += result => texts.Enqueue(result.Text);
+                scanner.Start();
+
+                SubmitAndAwaitCompletion(scanner);
+                SubmitAndAwaitCompletion(scanner);
+
+                Assert.That(texts, Is.EqualTo(new[] { "a", "b" }));
+            }
+        }
+
+        [Test]
+        public void SuppressRepeats_MissesReachThreshold_ResetsAndRaisesAgain()
+        {
+            var decoder = new SequenceDecoder(CreateResult("a"), null, null, CreateResult("a"));
+            using (var scanner = CreateScanner(decoder, SuppressingOptions(2)))
+            {
+                int detected = 0;
+                scanner.Detected += _ => Interlocked.Increment(ref detected);
+                scanner.Start();
+
+                for (int i = 0; i < 4; i++)
+                    SubmitAndAwaitCompletion(scanner);
+
+                Assert.That(Volatile.Read(ref detected), Is.EqualTo(2));
+            }
+        }
+
+        [Test]
+        public void SuppressRepeats_MissesBelowThreshold_StaysSuppressed()
+        {
+            var decoder = new SequenceDecoder(CreateResult("a"), null, null, CreateResult("a"));
+            using (var scanner = CreateScanner(decoder, SuppressingOptions(3)))
+            {
+                int detected = 0;
+                scanner.Detected += _ => Interlocked.Increment(ref detected);
+                scanner.Start();
+
+                for (int i = 0; i < 4; i++)
+                    SubmitAndAwaitCompletion(scanner);
+
+                Assert.That(Volatile.Read(ref detected), Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        public void SuppressRepeats_Off_RaisesEveryTime()
+        {
+            var decoder = new SequenceDecoder(CreateResult("a"), CreateResult("a"));
+            using (var scanner = CreateScanner(decoder, TimeSpan.Zero, false))
+            {
+                int detected = 0;
+                scanner.Detected += _ => Interlocked.Increment(ref detected);
+                scanner.Start();
+
+                SubmitAndAwaitCompletion(scanner);
+                SubmitAndAwaitCompletion(scanner);
+
+                Assert.That(Volatile.Read(ref detected), Is.EqualTo(2));
+            }
+        }
+
+        [Test]
+        public void SuppressRepeats_Restart_ForgetsThePreviousPayload()
+        {
+            var decoder = new SequenceDecoder(CreateResult("a"), CreateResult("a"));
+            using (var scanner = CreateScanner(decoder, SuppressingOptions(3)))
+            {
+                int detected = 0;
+                scanner.Detected += _ => Interlocked.Increment(ref detected);
+                scanner.Start();
+                SubmitAndAwaitCompletion(scanner);
+
+                scanner.Stop();
+                scanner.Start();
+                SubmitAndAwaitCompletion(scanner);
+
+                Assert.That(Volatile.Read(ref detected), Is.EqualTo(2));
+            }
+        }
+
+        [Test]
+        public void MissesBeforeReset_Zero_Throws()
+        {
+            var options = new QRCodeScannerOptions { SuppressRepeats = true, MissesBeforeReset = 0 };
+            Assert.Throws<ArgumentOutOfRangeException>(() => new QRCodeScanner(new SequenceDecoder(), options));
+        }
+
         private static Gray8Image CountingProvider(ref int calls)
         {
             Interlocked.Increment(ref calls);
@@ -512,6 +624,36 @@ namespace ZXingCpp.QRCode.Tests
                     StopOnSuccess = stopOnSuccess
                 },
                 callbackContext);
+
+        private static QRCodeScanner CreateScanner(IQRCodeDecoder decoder, QRCodeScannerOptions options) =>
+            new QRCodeScanner(decoder, options, null);
+
+        private static QRCodeScannerOptions SuppressingOptions(int missesBeforeReset) =>
+            new QRCodeScannerOptions
+            {
+                ScanInterval = TimeSpan.Zero,
+                StopOnSuccess = false,
+                SuppressRepeats = true,
+                MissesBeforeReset = missesBeforeReset
+            };
+
+        private static void SubmitAndAwaitCompletion(QRCodeScanner scanner)
+        {
+            using (var completed = new ManualResetEventSlim())
+            {
+                Action<QRCodeScanCompletion> handler = _ => completed.Set();
+                scanner.ScanCompleted += handler;
+                try
+                {
+                    Assert.That(scanner.TrySubmitFrame(Frame, 0d), Is.True);
+                    Assert.That(completed.Wait(3000), Is.True);
+                }
+                finally
+                {
+                    scanner.ScanCompleted -= handler;
+                }
+            }
+        }
 
         private static QRCodeResult CreateResult(string text) =>
             new QRCodeResult(

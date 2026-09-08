@@ -10,7 +10,7 @@ To use the runner in your own scene instead: add `QRCodeSampleRunner` to a GameO
 
 ## Webcam
 
-Open `WebcamDecode.unity` and enter Play Mode. The runner starts the default `WebCamTexture` (set **Webcam Device Name** to pick another camera; leave it empty for the default), shows it in the `RawImage`, and submits a frame whenever the camera delivers a new one. **Stop On Success** is off in this scene so it keeps scanning. The small label in the top-left corner shows the rendered FPS and how many scans complete per second.
+Open `WebcamDecode.unity` and enter Play Mode. The runner starts the default `WebCamTexture` (set **Webcam Device Name** to pick another camera; leave it empty for the default), shows it in the `RawImage`, and submits a frame whenever the camera delivers a new one. **Stop On Success** is off in this scene so it keeps scanning, and **Suppress Repeats** is on with **Misses Before Reset** at 3: a code that stays in view fires `Detected` once; take it out of view for three scan intervals (0.6 s at the default 0.2 s) and bring it back to fire again. The small label in the top-left corner shows the rendered FPS and how many scans complete per second.
 
 Each accepted frame is converted from RGBA to Gray8 on the main thread (integer Rec. 601 luma) into an `ArrayPool<byte>` buffer, then flipped with `Gray8RowOrder.FlipVertically` because `WebCamTexture` rows start at the displayed bottom like every Unity texture. The conversion runs only after the scanner accepts the frame, so frames dropped by the scan interval cost nothing beyond the submit call.
 
