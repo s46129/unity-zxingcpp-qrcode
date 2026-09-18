@@ -92,6 +92,20 @@ void Update()
 
 The readback already flips rows and downscales, so leave `DownscaleFactor` at 1 in the decode options and multiply result corners by the readback factor. `Gray8TextureReadback.IsSupported` is false on devices without `AsyncGPUReadback` or R8 render targets; keep the CPU path for them, as the webcam sample does. Dispose the readback before the scene goes away.
 
+## Performance
+
+Measured with Instruments on an iPhone 17 (iOS 26.6.1, Unity 2022.3.62f2, IL2CPP Release) running the webcam sample at 1280×720, 30 fps, five scans per second on the GPU path:
+
+| | |
+|---|---|
+| Main thread, whole app | 3.9% of one core |
+| GPU frame path on the main thread (blit, readback request, copy, submit) | about 1.3 ms per second, 0.13 ms per accepted frame |
+| `GetPixels32` / managed luma / flip on the main thread | none |
+| ZXing decode, worker thread | about 1.2 ms CPU per decode |
+| Main-thread hangs over 250 ms | none in 30 s |
+
+Setup, per-thread breakdown, what was not measured, and the commands and script to reproduce it are in [`Documentation~/performance.md`](Documentation~/performance.md).
+
 ## License and attribution
 
 Original code developed for this Unity package is licensed under the [Apache License 2.0](LICENSE.md). The bundled native plugins include ZXing-C++ and other third-party components that remain under their respective licenses; see [Third-party notices](Third%20Party%20Notices.md) and the included [ZXing-C++ license](ZXing-C++%20LICENSE.md).

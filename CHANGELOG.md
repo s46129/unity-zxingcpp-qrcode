@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added `Documentation~/performance.md`: an Instruments profile of the GPU frame path on an iPhone 17, with the `xctrace` commands and the `Documentation~/Profiling/xctrace_time_profile.py` script to reproduce it; the README summarises it.
 - Added `Gray8TextureReadback` in the new `ZXingCpp.QRCode.Unity` assembly: luma, vertical flip and box-average downscale run in one GPU pass into an R8 render texture that `AsyncGPUReadback` copies back without stalling the main thread; the completed frame is handed to the scanner with a single memcpy. Check `Gray8TextureReadback.IsSupported` and keep a CPU path for devices without async readback (#13).
 - Added `QRCodeScanner.CanAcceptFrame`: a read-only hint so a caller whose frame takes several frames to produce (such as a GPU readback) can skip frames the scanner would drop anyway; `TrySubmitFrame` still decides (#13).
 - The webcam sample now uses the GPU readback path by default (**Use Gpu Readback**) and falls back to `GetPixels32` where it is unsupported; the stats label shows which path is active (#13).
