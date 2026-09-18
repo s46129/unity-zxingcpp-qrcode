@@ -88,6 +88,21 @@ namespace ZXingCpp.QRCode
             }
         }
 
+        /// <summary>Reports whether a frame submitted now would be accepted; a hint for callers whose frame is expensive to produce, while <see cref="TrySubmitFrame(Gray8Image)"/> still decides.</summary>
+        public bool CanAcceptFrame() => CanAcceptFrame(CurrentTimeSeconds());
+
+        /// <summary>Reports whether a frame submitted at <paramref name="timestampSeconds"/> would be accepted; a hint for callers whose frame is expensive to produce, while <see cref="TrySubmitFrame(Gray8Image, double)"/> still decides.</summary>
+        public bool CanAcceptFrame(double timestampSeconds)
+        {
+            ValidateTimestamp(timestampSeconds);
+
+            lock (_gate)
+            {
+                ThrowIfDisposed();
+                return _running && !_busy && timestampSeconds >= _nextScanTime;
+            }
+        }
+
         /// <summary>Submits a frame the caller already holds; returns false when the scanner drops it.</summary>
         public bool TrySubmitFrame(Gray8Image frame) => TrySubmitFrame(frame, CurrentTimeSeconds());
 

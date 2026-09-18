@@ -605,6 +605,72 @@ namespace ZXingCpp.QRCode.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => new QRCodeScanner(new SequenceDecoder(), options));
         }
 
+        [Test]
+        public void CanAcceptFrame_NotStarted_ReturnsFalse()
+        {
+            using (var scanner = CreateScanner(new SequenceDecoder(), TimeSpan.Zero, false))
+            {
+                Assert.That(scanner.CanAcceptFrame(0d), Is.False);
+                Assert.That(scanner.TrySubmitFrame(Frame, 0d), Is.False);
+            }
+        }
+
+        [Test]
+        public void CanAcceptFrame_Ready_ReturnsTrueWithoutClaimingTheSlot()
+        {
+            using (var scanner = CreateScanner(new SequenceDecoder(), TimeSpan.FromSeconds(1), false))
+            {
+                scanner.Start();
+
+                Assert.That(scanner.CanAcceptFrame(5d), Is.True);
+                Assert.That(scanner.CanAcceptFrame(5d), Is.True);
+                Assert.That(scanner.TrySubmitFrame(Frame, 5d), Is.True);
+            }
+        }
+
+        [Test]
+        public void CanAcceptFrame_Busy_ReturnsFalse()
+        {
+            var decoder = new BlockingDecoder();
+            using (var scanner = CreateScanner(decoder, TimeSpan.Zero, false))
+            using (var completed = new ManualResetEventSlim())
+            {
+                scanner.ScanCompleted += _ => completed.Set();
+                scanner.Start();
+                Assert.That(scanner.TrySubmitFrame(Frame, 0d), Is.True);
+                Assert.That(decoder.Entered.Wait(3000), Is.True);
+
+                Assert.That(scanner.CanAcceptFrame(0d), Is.False);
+
+                decoder.Release.Set();
+                Assert.That(completed.Wait(3000), Is.True);
+                Assert.That(scanner.CanAcceptFrame(0d), Is.True);
+            }
+        }
+
+        [Test]
+        public void CanAcceptFrame_IntervalNotElapsed_ReturnsFalse()
+        {
+            using (var scanner = CreateScanner(new SequenceDecoder(), TimeSpan.FromSeconds(0.5), false))
+            {
+                scanner.Start();
+                Assert.That(scanner.TrySubmitFrame(Frame, 10d), Is.True);
+                Assert.That(SpinWait.SpinUntil(() => !scanner.IsBusy, 3000), Is.True);
+
+                Assert.That(scanner.CanAcceptFrame(10.49d), Is.False);
+                Assert.That(scanner.CanAcceptFrame(10.5d), Is.True);
+            }
+        }
+
+        [Test]
+        public void CanAcceptFrame_Disposed_Throws()
+        {
+            var scanner = CreateScanner(new SequenceDecoder(), TimeSpan.Zero, false);
+            scanner.Dispose();
+
+            Assert.That(() => scanner.CanAcceptFrame(0d), Throws.InstanceOf<ObjectDisposedException>());
+        }
+
         private static Gray8Image CountingProvider(ref int calls)
         {
             Interlocked.Increment(ref calls);

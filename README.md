@@ -15,6 +15,7 @@ Maintained as a personal open-source project by [s46129](https://github.com/s461
 - Zero-copy full-frame and ROI decode when managed downscale is disabled
 - Background scanner with frequency limiting, busy-frame dropping, ROI, downscale, and stop-on-success
 - Pure C# scheduling logic covered by EditMode tests
+- Optional GPU frame path: luma, flip and downscale in one shader pass, read back asynchronously so the main thread never touches pixels
 
 The package includes prebuilt binaries for every supported platform, all built from the pinned ZXing-C++ v3.1.0 source. Reproduce or update them with the scripts in `Native~`; see `Documentation~/installation.md`.
 
@@ -71,6 +72,25 @@ if (decoder.TryDecode(image, out var result))
 For continuous camera frames, use `QRCodeScanner`; create it on Unity's main thread so callbacks are posted back to that thread.
 
 `Gray8Image` rows run from the top of the image down, matching the top-left origin of `QRCodeRegion` and of the corners in `QRCodeResult`. Texture data arrives bottom-up, so pass it through `Gray8RowOrder.FlipVertically(image)` first.
+
+## GPU frames from a WebCamTexture or RenderTexture
+
+`Gray8TextureReadback` (assembly `ZXingCpp.QRCode.Unity`) converts any `Texture` to a top-left-origin Gray8 frame on the GPU and reads it back asynchronously, so the main thread only issues one blit and one memcpy per accepted frame instead of `GetPixels32` plus a luma loop:
+
+```csharp
+using ZXingCpp.QRCode.Unity;
+
+var readback = new Gray8TextureReadback(downscaleFactor: 2);
+readback.FrameReady += r => scanner.TrySubmitFrame(() => r.CopyFrame(RentBuffer(r.FrameByteLength)));
+
+void Update()
+{
+    if (webcam.didUpdateThisFrame && scanner.CanAcceptFrame())
+        readback.TryRequest(webcam);
+}
+```
+
+The readback already flips rows and downscales, so leave `DownscaleFactor` at 1 in the decode options and multiply result corners by the readback factor. `Gray8TextureReadback.IsSupported` is false on devices without `AsyncGPUReadback` or R8 render targets; keep the CPU path for them, as the webcam sample does. Dispose the readback before the scene goes away.
 
 ## License and attribution
 

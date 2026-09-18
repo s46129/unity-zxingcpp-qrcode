@@ -1,0 +1,16 @@
+{
+  "name": "ZXingCpp.QRCode.Unity",
+  "rootNamespace": "ZXingCpp.QRCode.Unity",
+  "references": [
+    "ZXingCpp.QRCode"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

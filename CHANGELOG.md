@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Added `Gray8TextureReadback` in the new `ZXingCpp.QRCode.Unity` assembly: luma, vertical flip and box-average downscale run in one GPU pass into an R8 render texture that `AsyncGPUReadback` copies back without stalling the main thread; the completed frame is handed to the scanner with a single memcpy. Check `Gray8TextureReadback.IsSupported` and keep a CPU path for devices without async readback (#13).
+- Added `QRCodeScanner.CanAcceptFrame`: a read-only hint so a caller whose frame takes several frames to produce (such as a GPU readback) can skip frames the scanner would drop anyway; `TrySubmitFrame` still decides (#13).
+- The webcam sample now uses the GPU readback path by default (**Use Gpu Readback**) and falls back to `GetPixels32` where it is unsupported; the stats label shows which path is active (#13).
+- Added GPU EditMode tests (`Tests/EditMode/Unity`) that compare the readback against the CPU luma/flip/downscale path and decode the TOPLEFT symbol through the native plugin from a GPU frame; they need a graphics device and ignore themselves under `-nographics` (#13).
+
 ## 1.2.0 - 2026-09-18
 
 - Added macOS support: a universal (arm64 + x86_64) `Runtime/Plugins/macOS/libZXing.dylib` that both the Apple silicon and the Intel Editor load, with a minimum deployment target of macOS 11.0 (#12).

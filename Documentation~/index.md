@@ -47,6 +47,8 @@ scanner.Start();
 scanner.TrySubmitFrame(new Gray8Image(yPlane, width, height, yRowStride));
 ```
 
+For a `WebCamTexture` or `RenderTexture`, `Gray8TextureReadback` (assembly `ZXingCpp.QRCode.Unity`) does the luma conversion, vertical flip and downscale on the GPU and reads the R8 result back asynchronously; ask `scanner.CanAcceptFrame()` before `TryRequest` and submit from `FrameReady` with `CopyFrame`. See the README section "GPU frames from a WebCamTexture or RenderTexture" and the [GPU readback specification](Spec/Gray8TextureReadbackSpec1.md).
+
 Create the scanner on Unity's main thread. It captures the current `SynchronizationContext`, so result events are posted back there. An accepted frame buffer is borrowed and must not be changed or returned to a pool until `ScanCompleted` fires.
 
 See [Installation and native builds](installation.md), [third-party notices](../Third%20Party%20Notices.md), [acceptance specification](Spec/QRCodePackageSpec1.md), and import the Basic Gray8 Decode sample from Package Manager.
