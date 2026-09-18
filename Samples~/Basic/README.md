@@ -16,6 +16,12 @@ Each accepted frame is converted from RGBA to Gray8 on the main thread (integer 
 
 The runner asks for camera permission before it creates the `WebCamTexture` (`Application.RequestUserAuthorization` on iOS, macOS and WebGL, `Permission.RequestUserPermission` on Android) and waits for the answer, because a texture created while the dialog is still open never delivers frames. On iOS the first launch therefore shows the system prompt and then starts the camera; a denied prompt leaves the preview black until the permission is granted in Settings.
 
+The runner asks the camera for 1280×720 at 30 fps (**Webcam Width / Height / Fps**); the device picks the closest mode it has. 640×480 decodes fine but looks soft when the preview fills a phone screen.
+
+Tapping the preview focuses the camera on that point once (`WebCamTexture.autoFocusPoint`) and returns to continuous auto focus after **Tap Focus Hold Seconds**; the stats label shows the tapped point while the hold lasts. Only Android and iOS cameras report `isAutoFocusPointSupported`; on other cameras the label reports the tap as unsupported and nothing else happens. Phones already run continuous auto focus, so a tap on something that is already sharp changes little — tap a subject at a clearly different distance to see it work.
+
+The preview keeps the camera's aspect ratio: the `RawImage` size in the scene is treated as a bounding box and the image is letterboxed into it (with the box's sides swapped when the frame is turned a quarter). The tap is read from the Input System package when the project uses it (the sample assembly references `Unity.InputSystem` and defines `QRCODE_SAMPLE_INPUT_SYSTEM` only when the package is installed, so projects without it still compile) and from the legacy `Input` class otherwise.
+
 Phone cameras deliver frames in sensor orientation. The preview turns its `RectTransform` by `-videoRotationAngle` and flips its `uvRect` when `videoVerticallyMirrored` is set, so it looks upright; the decoder still reads the raw frame, so `TopLeft`/`TopRight`/... and `Orientation` are measured in that unrotated frame (a portrait phone typically reports an orientation near ±90). Rotate the corners yourself if you need them in screen space.
 
 For a camera Y plane or another raw source, call:
