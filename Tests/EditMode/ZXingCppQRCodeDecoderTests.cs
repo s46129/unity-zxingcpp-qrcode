@@ -5,45 +5,13 @@ namespace ZXingCpp.QRCode.Tests
 {
     public sealed class ZXingCppQRCodeDecoderTests
     {
-        private const string Payload = "TOPLEFT";
-        private const int ModuleCount = 21;
-        private const int ModuleScale = 4;
-        private const int QuietZoneModules = 4;
-        private const int FrameSize = 256;
+        private const string Payload = TopLeftSymbol.Payload;
+        private const int FrameSize = TopLeftSymbol.FrameSize;
         private const int Downscale = 2;
-        private const byte White = 255;
-        private const byte Black = 0;
-
-        private const int SymbolLeft = QuietZoneModules * ModuleScale;
-        private const int SymbolTop = QuietZoneModules * ModuleScale;
-        private const int SymbolRight = SymbolLeft + ModuleCount * ModuleScale;
-        private const int SymbolBottom = SymbolTop + ModuleCount * ModuleScale;
-
-        // Inline so the suite needs no image asset; regenerate with a QR encoder to change the payload.
-        private static readonly string[] SymbolModules =
-        {
-            "111111100111101111111",
-            "100000100101001000001",
-            "101110100100001011101",
-            "101110101111001011101",
-            "101110101011101011101",
-            "100000100010101000001",
-            "111111101010101111111",
-            "000000000111100000000",
-            "110001110100100011000",
-            "010000011000101010011",
-            "101010110101010010100",
-            "101111001100000011011",
-            "111011100010001000011",
-            "000000001001111001110",
-            "111111101100101100111",
-            "100000101111110010010",
-            "101110100110100100000",
-            "101110100100100000100",
-            "101110100000001110111",
-            "100000101010000101101",
-            "111111101111010011100"
-        };
+        private const int SymbolLeft = TopLeftSymbol.SymbolLeft;
+        private const int SymbolTop = TopLeftSymbol.SymbolTop;
+        private const int SymbolRight = TopLeftSymbol.SymbolRight;
+        private const int SymbolBottom = TopLeftSymbol.SymbolBottom;
 
         [SetUp]
         public void RequireAnEditorThatCanLoadTheNativePlugin()
@@ -163,29 +131,6 @@ namespace ZXingCpp.QRCode.Tests
             return frame;
         }
 
-        private static byte[] CreateFrame()
-        {
-            byte[] frame = new byte[FrameSize * FrameSize];
-            for (int index = 0; index < frame.Length; index++)
-                frame[index] = White;
-
-            for (int row = 0; row < ModuleCount; row++)
-            {
-                string modules = SymbolModules[row];
-                for (int column = 0; column < ModuleCount; column++)
-                {
-                    if (modules[column] != '1')
-                        continue;
-
-                    int top = SymbolTop + row * ModuleScale;
-                    int left = SymbolLeft + column * ModuleScale;
-                    for (int y = top; y < top + ModuleScale; y++)
-                        for (int x = left; x < left + ModuleScale; x++)
-                            frame[y * FrameSize + x] = Black;
-                }
-            }
-
-            return frame;
-        }
+        private static byte[] CreateFrame() => TopLeftSymbol.CreateFrame();
     }
 }

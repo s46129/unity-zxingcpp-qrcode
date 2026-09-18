@@ -3,6 +3,7 @@
   "rootNamespace": "ZXingCpp.QRCode.Samples",
   "references": [
     "ZXingCpp.QRCode",
+    "ZXingCpp.QRCode.Unity",
     "Unity.TextMeshPro",
     "UnityEngine.UI",
     "Unity.InputSystem"

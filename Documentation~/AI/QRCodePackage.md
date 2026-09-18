@@ -22,6 +22,7 @@
 
 - 同時最多一個 background decode；busy 時新 frame 直接拒絕。
 - 只有接受 frame 時才推進 `nextScanTime`，避免 busy drop 延後下一次有效掃描。
+- `CanAcceptFrame` 只讀 `_running`／`_busy`／`_nextScanTime`，不推進任何狀態；它是給「frame 要好幾幀才準備好」的呼叫端（GPU readback）用的提示，`TryClaimScanSlot` 仍是唯一裁決點。兩者條件必須同一套，見 [Gray8TextureReadback](Gray8TextureReadback.md)。
 - 拒絕一個 frame 必須是零影像成本。`TrySubmitFrame(Func<Gray8Image>)` 在 `_gate` 內判完 running／busy／interval 才呼叫 provider，所以呼叫端無法在被拒的路徑上付出複製成本；`TrySubmitFrame(Gray8Image)` 則是呼叫端已經持有影像時的入口。要新增取樣路徑走 provider overload，不要在外面預查 `IsBusy`——那既漏掉 interval 條件，又在預查與提交之間留下競爭。
 - provider 丟例外時 `_busy` 一律清掉，`nextScanTime` 只在 generation 未變時回滾；沒清 `_busy` 會讓 scanner 永久卡住（沒有 decode 會來清它）。
 - 被接受的 frame 只完成一次：`AcceptedFrame` 帶一個 `Interlocked` 完成閂，`CompleteFrame` 先搶到才做事。`SynchronizationContext.Post` 可以先把 callback 排進佇列再丟例外，於是佇列裡那份與 catch 裡那份會同時想完成同一個 frame；完成兩次會清掉**下一個** frame 的 `_busy`（兩個 decode 重疊）並把同一條 buffer 歸還兩次。
@@ -52,7 +53,7 @@
 
 - `Post` 成功回傳、callback 卻永遠不被 pump（context 已拆掉、domain reload）偵測不到：沒有例外可接，`_busy` 仍會永久留在 `true`，租用的 buffer 也收不回來。要處理得加逾時 watchdog，見 issue #7。
 - 套件內含 Windows x86_64、macOS universal、Android arm64-v8a、iOS arm64（device）binary；`Native~` 重建時首次 configure 需要 Git/network。iOS Simulator、Android 32-bit、Linux、WebGL 沒有 binary，`ZXingCppQRCodeDecoder` 在那些平台丟 `QRCodeNativeException`。
-- API 不直接借用 `NativeArray<byte>`，因為 background lifetime 無法由 scanner 保證；Sample 明確複製 R8 raw data。
+- API 不直接借用 `NativeArray<byte>`，因為 background lifetime 無法由 scanner 保證；Sample 明確複製 R8 raw data。GPU 路徑（`Runtime/Unity/`）同樣以一次 memcpy 從 readback 的 `NativeArray` 進 `byte[]`，見 [Gray8TextureReadback](Gray8TextureReadback.md)。
 - Unity `Texture2D` 的 raw data 是 bottom-up：第一列是畫面最下列，與 `GetPixels32` 同序。Sample 因此在複製後就地跑 `Gray8RowOrder.FlipVertically`，不做這步的話角點會落在畫面下緣、`Orientation` 差 90 度、`IsMirrored` 變 true，上半部 ROI 也會選到畫面下半（`ZXingCppQRCodeDecoderTests` 的 bottom-up 兩條測試把這個症狀鎖住，issue #4 的留言有原始實測數據）。就地翻轉是為了不再開第二塊整張影像大小的 buffer，代價是一次額外的整張走訪加一條 row 暫存。相機 Y plane 多半已經是 top-down，`SubmitRawGray8` 不翻——`FlipVertically` 是無條件反轉，對已經 top-down 的來源呼叫會把方向弄反。
 - Sample 的 Texture 路徑複製 `GetRawTextureData<byte>()` 的前 `width * height` bytes——raw data 含所有 mip level，多複製的部分解碼用不到。buffer 來自 `ArrayPool<byte>.Shared`，記在一份 `HashSet<byte[]>` 帳上，`ScanCompleted` 只歸還帳上有的那條——`SubmitRawGray8` 的呼叫端 buffer 因此不會被誤還，`Remove` 也讓重複歸還不可能。**不能用單一欄位記**：`CompleteFrame` 先清 `_busy` 才觸發 `Detected`，所以事件處理器可以在 `ScanCompleted` 之前就再租一條，單欄位會被覆蓋而漏還前一條。`OnDestroy` 時在途的 buffer 直接丟掉不還，因為 decode 還在讀它。殘留配置只剩每次提交的 display class ＋ delegate（約 10^2 bytes），與整張影像不同量級。
 - managed downscale 的角點回推是整數倍近似；payload 解碼不受影響。

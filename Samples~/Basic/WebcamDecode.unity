@@ -544,6 +544,7 @@ MonoBehaviour:
   webcamFps: 30
   webcamPreview: {fileID: 940172040}
   tapFocusHoldSeconds: 2
+  useGpuReadback: 1
 --- !u!4 &1118627922
 Transform:
   m_ObjectHideFlags: 0

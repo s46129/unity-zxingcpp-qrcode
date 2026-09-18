@@ -6,6 +6,7 @@ using TMPro;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using ZXingCpp.QRCode.Unity;
 #if UNITY_ANDROID && !UNITY_EDITOR
 using UnityEngine.Android;
 #endif
@@ -34,6 +35,8 @@ namespace ZXingCpp.QRCode.Samples
         [SerializeField, Min(1)] private int webcamFps = 30;
         [SerializeField] private RawImage webcamPreview;
         [SerializeField, Min(0f)] private float tapFocusHoldSeconds = 2f;
+        [Tooltip("Convert, flip and downscale webcam frames on the GPU and read them back asynchronously; falls back to GetPixels32 where AsyncGPUReadback is unsupported.")]
+        [SerializeField] private bool useGpuReadback = true;
 
         private readonly HashSet<byte[]> _rentedFrameBuffers = new HashSet<byte[]>();
 
@@ -41,6 +44,10 @@ namespace ZXingCpp.QRCode.Samples
         private WebCamTexture _webcam;
         private Color32[] _webcamPixels;
         private Func<Gray8Image> _webcamProvider;
+        private Gray8TextureReadback _readback;
+        private Func<Gray8Image> _readbackProvider;
+        private int _cornerScale = 1;
+        private bool _readbackFailureLogged;
         private bool _tapFocusSupported;
         private float _tapFocusResetTime = float.PositiveInfinity;
         private string _focusStatus = "";
@@ -51,6 +58,18 @@ namespace ZXingCpp.QRCode.Samples
 
         private void Start()
         {
+            // On the GPU path the readback already downscales, so the decoder must not do it again;
+            // the corners it reports are then in the downscaled frame and get scaled back for display.
+            bool gpuReadback = useWebcam && useGpuReadback && Gray8TextureReadback.IsSupported;
+            if (gpuReadback)
+            {
+                _readback = new Gray8TextureReadback(downscaleFactor);
+                _readback.FrameReady += OnReadbackFrameReady;
+                _readback.ReadbackFailed += OnReadbackFailed;
+                _readbackProvider = RentReadbackFrame;
+                _cornerScale = downscaleFactor;
+            }
+
             var decoder = new ZXingCppQRCodeDecoder();
             _scanner = new QRCodeScanner(decoder, new QRCodeScannerOptions
             {
@@ -60,7 +79,7 @@ namespace ZXingCpp.QRCode.Samples
                 MissesBeforeReset = missesBeforeReset,
                 DecodeOptions = new QRCodeDecodeOptions
                 {
-                    DownscaleFactor = downscaleFactor,
+                    DownscaleFactor = gpuReadback ? 1 : downscaleFactor,
                     TryRotate = true
                 }
             });
@@ -80,7 +99,17 @@ namespace ZXingCpp.QRCode.Samples
             // WebCamTexture reports 16x16 until the first real frame arrives.
             if (_webcam != null && _webcam.didUpdateThisFrame && _webcam.width > 16)
             {
-                _scanner.TrySubmitFrame(_webcamProvider);
+                if (_readback != null)
+                {
+                    // The readback lands a frame or two later, so ask first: a frame the scanner
+                    // would drop anyway is not worth a GPU pass. TrySubmitFrame still decides.
+                    if (_scanner.CanAcceptFrame())
+                        _readback.TryRequest(_webcam);
+                }
+                else
+                {
+                    _scanner.TrySubmitFrame(_webcamProvider);
+                }
                 AlignWebcamPreview();
             }
 
@@ -95,7 +124,8 @@ namespace ZXingCpp.QRCode.Samples
             if (_statsElapsed < 0.5f)
                 return;
 
-            statsLabel.text = $"FPS {_framesSinceStats / _statsElapsed:F0}   scans/s {_scansSinceStats / _statsElapsed:F1}{_focusStatus}";
+            string path = _webcam == null ? "" : _readback != null ? "   gpu" : "   cpu";
+            statsLabel.text = $"FPS {_framesSinceStats / _statsElapsed:F0}   scans/s {_scansSinceStats / _statsElapsed:F1}{path}{_focusStatus}";
             _framesSinceStats = 0;
             _scansSinceStats = 0;
             _statsElapsed = 0f;
@@ -302,6 +332,38 @@ namespace ZXingCpp.QRCode.Samples
             }
         }
 
+        private void OnReadbackFrameReady(Gray8TextureReadback readback)
+        {
+            // Rejected here means the scanner stopped or got busy meanwhile; the provider then never runs.
+            _scanner.TrySubmitFrame(_readbackProvider);
+        }
+
+        private void OnReadbackFailed(Gray8TextureReadback readback)
+        {
+            if (_readbackFailureLogged)
+                return;
+
+            _readbackFailureLogged = true;
+            Debug.LogWarning("QRCodeSampleRunner: the GPU reported a readback error; frames from this readback are skipped.");
+        }
+
+        private Gray8Image RentReadbackFrame()
+        {
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(_readback.FrameByteLength);
+            try
+            {
+                // One memcpy of the R8 frame; luma, flip and downscale already happened on the GPU.
+                Gray8Image frame = _readback.CopyFrame(buffer);
+                _rentedFrameBuffers.Add(buffer);
+                return frame;
+            }
+            catch
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+                throw;
+            }
+        }
+
         private void OnScanCompleted(QRCodeScanCompletion completion)
         {
             if (!completion.Discarded)
@@ -319,8 +381,11 @@ namespace ZXingCpp.QRCode.Samples
         {
             Debug.Log($"QR decoded: {result.Text}");
             if (resultLabel != null)
-                resultLabel.text = $"{result.Text}{Environment.NewLine}TL {result.TopLeft}  TR {result.TopRight}{Environment.NewLine}BL {result.BottomLeft}  BR {result.BottomRight}{Environment.NewLine}orientation {result.Orientation}  mirrored {result.IsMirrored}";
+                resultLabel.text = $"{result.Text}{Environment.NewLine}TL {Scale(result.TopLeft)}  TR {Scale(result.TopRight)}{Environment.NewLine}BL {Scale(result.BottomLeft)}  BR {Scale(result.BottomRight)}{Environment.NewLine}orientation {result.Orientation}  mirrored {result.IsMirrored}";
         }
+
+        private QRCodePoint Scale(QRCodePoint point) =>
+            _cornerScale == 1 ? point : new QRCodePoint(point.X * _cornerScale, point.Y * _cornerScale);
 
         private static void OnDecodeFailed(Exception exception)
         {
@@ -334,6 +399,14 @@ namespace ZXingCpp.QRCode.Samples
                 _webcam.Stop();
                 Destroy(_webcam);
                 _webcam = null;
+            }
+
+            if (_readback != null)
+            {
+                _readback.FrameReady -= OnReadbackFrameReady;
+                _readback.ReadbackFailed -= OnReadbackFailed;
+                _readback.Dispose();
+                _readback = null;
             }
 
             if (_scanner == null)
