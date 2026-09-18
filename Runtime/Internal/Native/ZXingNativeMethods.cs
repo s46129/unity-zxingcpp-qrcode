@@ -5,7 +5,12 @@ namespace ZXingCpp.QRCode.Internal
 {
     internal static class ZXingNativeMethods
     {
+#if UNITY_IOS && !UNITY_EDITOR
+        // Unity links the iOS plugin statically, so the C API lives in the player executable rather than in a loadable library.
+        internal const string LibraryName = "__Internal";
+#else
         internal const string LibraryName = "ZXing";
+#endif
         internal const int QRCodeFormat = 0x2051;
 
         internal enum ImageFormat

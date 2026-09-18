@@ -3,7 +3,9 @@
 This unofficial Unity package includes prebuilt native plugins at:
 
 - `Runtime/Plugins/Windows/x86_64/ZXing.dll`
+- `Runtime/Plugins/macOS/libZXing.dylib`
 - `Runtime/Plugins/Android/arm64-v8a/libZXing.so`
+- `Runtime/Plugins/iOS/libZXing.a`
 
 Those binaries contain the components and notices listed below. The notices are informational and do not change the components' respective license terms.
 
@@ -18,7 +20,7 @@ The native build uses the upstream ZXing-C++ source without source patches and e
 
 ## libzueci
 
-ZXing-C++ includes libzueci in its reader core. It is compiled into both native plugins.
+ZXing-C++ includes libzueci in its reader core. It is compiled into every native plugin.
 
 Source notice: [`core/src/libzueci/zueci.c`](https://github.com/zxing-cpp/zxing-cpp/blob/885baaf0840335153c1a487fa65f9c1388702c81/core/src/libzueci/zueci.c)
 
@@ -67,6 +69,10 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 - Neither the names of the LLVM Team, University of Illinois at Urbana-Champaign, nor the names of its contributors may be used to endorse or promote products derived from this Software without specific prior written permission.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS WITH THE SOFTWARE.
+
+## Apple platform libraries (macOS and iOS plugins only)
+
+The bundled macOS and iOS plugins are built with Xcode 26.6 (Apple clang 21.0.0, macOS SDK 26.5, iOS SDK 26.5). They link the system `libc++` and `libSystem` dynamically and do not bundle any Apple or LLVM runtime library. Portions of the LLVM `libc++` headers are compiled into the object code; that use is covered by the LLVM exception quoted above.
 
 ## Microsoft Visual C++ runtime (Windows plugin only)
 

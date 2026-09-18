@@ -48,9 +48,13 @@ namespace ZXingCpp.QRCode.Tests
         [SetUp]
         public void RequireAnEditorThatCanLoadTheNativePlugin()
         {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ||
-                RuntimeInformation.ProcessArchitecture != Architecture.X64)
-                Assert.Ignore("The package only ships a ZXing-C++ binary for Windows x86_64 and Android arm64-v8a, so no other Editor can load it.");
+            bool windowsX64 = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) &&
+                              RuntimeInformation.ProcessArchitecture == Architecture.X64;
+            bool macOS = RuntimeInformation.IsOSPlatform(OSPlatform.OSX) &&
+                         (RuntimeInformation.ProcessArchitecture == Architecture.X64 ||
+                          RuntimeInformation.ProcessArchitecture == Architecture.Arm64);
+            if (!windowsX64 && !macOS)
+                Assert.Ignore("The package ships Editor-loadable ZXing-C++ binaries for Windows x86_64 and macOS (arm64/x86_64) only, so no other Editor can load it.");
         }
 
         [Test]

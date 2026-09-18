@@ -8,3 +8,5 @@
 *.ps1 text eol=crlf
 *.dll binary
 *.so binary
+*.dylib binary
+*.a binary

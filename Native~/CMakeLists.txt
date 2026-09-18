@@ -7,7 +7,14 @@ if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "Use a self-contained MSVC runtime" FORCE)
 endif()
 
-set(BUILD_SHARED_LIBS ON CACHE BOOL "Build ZXing as the Unity native plugin" FORCE)
+# Unity links iOS plugins into the player executable as static libraries and binds them through DllImport("__Internal").
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(QRCODE_BUILD_SHARED OFF)
+else()
+    set(QRCODE_BUILD_SHARED ON)
+endif()
+
+set(BUILD_SHARED_LIBS ${QRCODE_BUILD_SHARED} CACHE BOOL "Build ZXing as the Unity native plugin" FORCE)
 set(ZXING_READERS ON CACHE BOOL "Enable barcode readers" FORCE)
 set(ZXING_WRITERS OFF CACHE STRING "Disable barcode writers" FORCE)
 set(ZXING_C_API ON CACHE BOOL "Export the stable C API used by P/Invoke" FORCE)
@@ -45,8 +52,22 @@ elseif(ANDROID)
     # 16 KB page-size devices reject 4 KB-aligned segments; the NDK only passes these when ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES is set.
     target_link_options(ZXing PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,-z,common-page-size=16384")
     set(QRCODE_PLUGIN_DIR "${QRCODE_PACKAGE_ROOT}/Runtime/Plugins/Android/arm64-v8a")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    if(NOT CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+        message(FATAL_ERROR "ZXing-C++ QR Code supports iOS arm64 only; pass -DCMAKE_OSX_ARCHITECTURES=arm64.")
+    endif()
+    if(CMAKE_OSX_SYSROOT MATCHES "[Ss]imulator")
+        message(FATAL_ERROR "ZXing-C++ QR Code ships the iOS device slice only; a simulator build would overwrite it.")
+    endif()
+    set(QRCODE_PLUGIN_DIR "${QRCODE_PACKAGE_ROOT}/Runtime/Plugins/iOS")
+elseif(APPLE)
+    # One universal dylib serves both the Apple silicon and the Intel Editor, so a partial slice must not replace it silently.
+    if(NOT ("arm64" IN_LIST CMAKE_OSX_ARCHITECTURES AND "x86_64" IN_LIST CMAKE_OSX_ARCHITECTURES))
+        message(FATAL_ERROR "ZXing-C++ QR Code ships a universal macOS plugin; pass -DCMAKE_OSX_ARCHITECTURES=arm64\;x86_64.")
+    endif()
+    set(QRCODE_PLUGIN_DIR "${QRCODE_PACKAGE_ROOT}/Runtime/Plugins/macOS")
 else()
-    message(FATAL_ERROR "This package build supports only Windows and Android.")
+    message(FATAL_ERROR "This package build supports only Windows, Android, macOS and iOS.")
 endif()
 
 if(ANDROID)
@@ -58,6 +79,27 @@ if(ANDROID)
         COMMAND "${CMAKE_COMMAND}" "-DELF_FILE=${QRCODE_PLUGIN_DIR}/$<TARGET_FILE_NAME:ZXing>" -P "${CMAKE_CURRENT_LIST_DIR}/cmake/CheckElfAlignment.cmake"
         DEPENDS ZXing
         COMMENT "Copying, stripping and 16 KB alignment-checking ZXing native plugin into the Unity package"
+    )
+elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    add_custom_target(
+        CopyZXingPlugin ALL
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${QRCODE_PLUGIN_DIR}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:ZXing>" "${QRCODE_PLUGIN_DIR}/libZXing.a"
+        DEPENDS ZXing
+        COMMENT "Copying ZXing static library into the Unity package"
+    )
+elseif(APPLE)
+    # Upstream versions the dylib name (libZXing.<major>.dylib); Unity resolves DllImport("ZXing") to the unversioned file.
+    # Apple silicon refuses to load unsigned code, and strip invalidates the linker's ad-hoc signature, so re-sign last.
+    add_custom_target(
+        CopyZXingPlugin ALL
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${QRCODE_PLUGIN_DIR}"
+        COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:ZXing>" "${QRCODE_PLUGIN_DIR}/libZXing.dylib"
+        COMMAND install_name_tool -id "@rpath/libZXing.dylib" "${QRCODE_PLUGIN_DIR}/libZXing.dylib"
+        COMMAND "${CMAKE_STRIP}" -x "${QRCODE_PLUGIN_DIR}/libZXing.dylib"
+        COMMAND codesign --force --sign - "${QRCODE_PLUGIN_DIR}/libZXing.dylib"
+        DEPENDS ZXing
+        COMMENT "Copying, stripping and ad-hoc signing ZXing native plugin into the Unity package"
     )
 else()
     add_custom_target(
