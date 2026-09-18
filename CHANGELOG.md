@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 - 2026-09-18
 
 - Added macOS support: a universal (arm64 + x86_64) `Runtime/Plugins/macOS/libZXing.dylib` that both the Apple silicon and the Intel Editor load, with a minimum deployment target of macOS 11.0 (#12).
 - Added iOS support: a device-only arm64 static library `Runtime/Plugins/iOS/libZXing.a` linked into the player through `DllImport("__Internal")`, with a minimum deployment target of iOS 12.0 (#12).
