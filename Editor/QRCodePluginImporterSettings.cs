@@ -6,6 +6,14 @@ namespace ZXingCpp.QRCode.Editor
 {
     internal static class QRCodePluginImporterSettings
     {
+        private static readonly BuildTarget[] PlayerTargets =
+        {
+            BuildTarget.StandaloneWindows64,
+            BuildTarget.StandaloneOSX,
+            BuildTarget.Android,
+            BuildTarget.iOS
+        };
+
         [MenuItem("Tools/ZXing-C++ QR Code/Apply Native Plugin Import Settings")]
         private static void ApplyAll()
         {
@@ -28,6 +36,16 @@ namespace ZXingCpp.QRCode.Editor
                     ConfigureAndroid(importer);
                     configuredCount++;
                 }
+                else if (path.EndsWith("/macOS/libZXing.dylib", StringComparison.OrdinalIgnoreCase))
+                {
+                    ConfigureMacOS(importer);
+                    configuredCount++;
+                }
+                else if (path.EndsWith("/iOS/libZXing.a", StringComparison.OrdinalIgnoreCase))
+                {
+                    ConfigureIOS(importer);
+                    configuredCount++;
+                }
             }
 
             AssetDatabase.Refresh();
@@ -38,24 +56,45 @@ namespace ZXingCpp.QRCode.Editor
 
         private static void ConfigureWindows(PluginImporter importer)
         {
-            importer.SetCompatibleWithAnyPlatform(false);
+            RestrictToPlayerTarget(importer, BuildTarget.StandaloneWindows64);
             importer.SetCompatibleWithEditor(true);
             importer.SetEditorData("OS", "Windows");
             importer.SetEditorData("CPU", "x86_64");
-            importer.SetCompatibleWithPlatform(BuildTarget.StandaloneWindows64, true);
-            importer.SetCompatibleWithPlatform(BuildTarget.Android, false);
             importer.SetPlatformData(BuildTarget.StandaloneWindows64, "CPU", "x86_64");
             importer.SaveAndReimport();
         }
 
         private static void ConfigureAndroid(PluginImporter importer)
         {
-            importer.SetCompatibleWithAnyPlatform(false);
+            RestrictToPlayerTarget(importer, BuildTarget.Android);
             importer.SetCompatibleWithEditor(false);
-            importer.SetCompatibleWithPlatform(BuildTarget.StandaloneWindows64, false);
-            importer.SetCompatibleWithPlatform(BuildTarget.Android, true);
             importer.SetPlatformData(BuildTarget.Android, "CPU", "ARM64");
             importer.SaveAndReimport();
+        }
+
+        private static void ConfigureMacOS(PluginImporter importer)
+        {
+            // The dylib is universal, so both the Apple silicon and the Intel Editor may load it.
+            RestrictToPlayerTarget(importer, BuildTarget.StandaloneOSX);
+            importer.SetCompatibleWithEditor(true);
+            importer.SetEditorData("OS", "OSX");
+            importer.SetEditorData("CPU", "AnyCPU");
+            importer.SetPlatformData(BuildTarget.StandaloneOSX, "CPU", "AnyCPU");
+            importer.SaveAndReimport();
+        }
+
+        private static void ConfigureIOS(PluginImporter importer)
+        {
+            RestrictToPlayerTarget(importer, BuildTarget.iOS);
+            importer.SetCompatibleWithEditor(false);
+            importer.SaveAndReimport();
+        }
+
+        private static void RestrictToPlayerTarget(PluginImporter importer, BuildTarget target)
+        {
+            importer.SetCompatibleWithAnyPlatform(false);
+            foreach (BuildTarget playerTarget in PlayerTargets)
+                importer.SetCompatibleWithPlatform(playerTarget, playerTarget == target);
         }
     }
 }

@@ -1,10 +1,17 @@
 using System;
 using System.Buffers;
+using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+#if UNITY_ANDROID && !UNITY_EDITOR
+using UnityEngine.Android;
+#endif
+#if QRCODE_SAMPLE_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 namespace ZXingCpp.QRCode.Samples
 {
@@ -22,10 +29,11 @@ namespace ZXingCpp.QRCode.Samples
         [Header("Webcam")]
         [SerializeField] private bool useWebcam;
         [SerializeField] private string webcamDeviceName = "";
-        [SerializeField, Min(16)] private int webcamWidth = 640;
-        [SerializeField, Min(16)] private int webcamHeight = 480;
+        [SerializeField, Min(16)] private int webcamWidth = 1280;
+        [SerializeField, Min(16)] private int webcamHeight = 720;
         [SerializeField, Min(1)] private int webcamFps = 30;
         [SerializeField] private RawImage webcamPreview;
+        [SerializeField, Min(0f)] private float tapFocusHoldSeconds = 2f;
 
         private readonly HashSet<byte[]> _rentedFrameBuffers = new HashSet<byte[]>();
 
@@ -33,6 +41,10 @@ namespace ZXingCpp.QRCode.Samples
         private WebCamTexture _webcam;
         private Color32[] _webcamPixels;
         private Func<Gray8Image> _webcamProvider;
+        private bool _tapFocusSupported;
+        private float _tapFocusResetTime = float.PositiveInfinity;
+        private string _focusStatus = "";
+        private Vector2 _previewBounds;
         private int _framesSinceStats;
         private int _scansSinceStats;
         private float _statsElapsed;
@@ -58,7 +70,7 @@ namespace ZXingCpp.QRCode.Samples
             _scanner.Start();
 
             if (useWebcam)
-                StartWebcam();
+                StartCoroutine(StartWebcamWhenAuthorized());
             else if (sourceTexture != null)
                 SubmitTexture(sourceTexture);
         }
@@ -67,7 +79,13 @@ namespace ZXingCpp.QRCode.Samples
         {
             // WebCamTexture reports 16x16 until the first real frame arrives.
             if (_webcam != null && _webcam.didUpdateThisFrame && _webcam.width > 16)
+            {
                 _scanner.TrySubmitFrame(_webcamProvider);
+                AlignWebcamPreview();
+            }
+
+            if (_webcam != null)
+                UpdateTapToFocus();
 
             if (statsLabel == null)
                 return;
@@ -77,7 +95,7 @@ namespace ZXingCpp.QRCode.Samples
             if (_statsElapsed < 0.5f)
                 return;
 
-            statsLabel.text = $"FPS {_framesSinceStats / _statsElapsed:F0}   scans/s {_scansSinceStats / _statsElapsed:F1}";
+            statsLabel.text = $"FPS {_framesSinceStats / _statsElapsed:F0}   scans/s {_scansSinceStats / _statsElapsed:F1}{_focusStatus}";
             _framesSinceStats = 0;
             _scansSinceStats = 0;
             _statsElapsed = 0f;
@@ -105,6 +123,25 @@ namespace ZXingCpp.QRCode.Samples
             return _scanner.TrySubmitFrame(new Gray8Image(gray8, width, height, rowStride));
         }
 
+        private IEnumerator StartWebcamWhenAuthorized()
+        {
+            // A WebCamTexture created before the permission dialog is answered stays black for the rest of the run.
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (!Permission.HasUserAuthorizedPermission(Permission.Camera))
+                Permission.RequestUserPermission(Permission.Camera);
+            while (!Permission.HasUserAuthorizedPermission(Permission.Camera))
+                yield return new WaitForSecondsRealtime(0.5f);
+#else
+            yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
+            if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
+            {
+                Debug.LogWarning("QRCodeSampleRunner: camera permission was denied, so the webcam stays off.");
+                yield break;
+            }
+#endif
+            StartWebcam();
+        }
+
         private void StartWebcam()
         {
             _webcam = string.IsNullOrEmpty(webcamDeviceName)
@@ -112,8 +149,105 @@ namespace ZXingCpp.QRCode.Samples
                 : new WebCamTexture(webcamDeviceName, webcamWidth, webcamHeight, webcamFps);
             _webcam.Play();
             if (webcamPreview != null)
+            {
                 webcamPreview.texture = _webcam;
+                // The scene size is the box the preview must fit into; the actual size follows the camera's aspect.
+                _previewBounds = webcamPreview.rectTransform.sizeDelta;
+            }
             _webcamProvider = RentWebcamFrame;
+
+            foreach (WebCamDevice device in WebCamTexture.devices)
+                if (device.name == _webcam.deviceName)
+                    _tapFocusSupported = device.isAutoFocusPointSupported;
+            _focusStatus = _tapFocusSupported ? "" : "   tap focus unsupported";
+        }
+
+        // A tap on the preview focuses the camera there once; after the hold time the camera
+        // goes back to continuous auto focus. Desktop cameras report no support and ignore taps.
+        private void UpdateTapToFocus()
+        {
+            if (Time.unscaledTime >= _tapFocusResetTime)
+            {
+                _webcam.autoFocusPoint = null;
+                _tapFocusResetTime = float.PositiveInfinity;
+                _focusStatus = "";
+            }
+
+            if (webcamPreview == null || !TryGetTap(out Vector2 screenPosition))
+                return;
+
+            Canvas canvas = webcamPreview.canvas;
+            Camera canvasCamera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay ? canvas.worldCamera : null;
+            RectTransform rectTransform = webcamPreview.rectTransform;
+            if (!RectTransformUtility.RectangleContainsScreenPoint(rectTransform, screenPosition, canvasCamera) ||
+                !RectTransformUtility.ScreenPointToLocalPointInRectangle(rectTransform, screenPosition, canvasCamera, out Vector2 local))
+                return;
+
+            // The local point is inside the rotated RectTransform, so it already lives in texture space; only the mirror flip remains.
+            Rect rect = rectTransform.rect;
+            float u = Mathf.Clamp01((local.x - rect.x) / rect.width);
+            float v = Mathf.Clamp01((local.y - rect.y) / rect.height);
+            if (_webcam.videoVerticallyMirrored)
+                v = 1f - v;
+
+            // The label reports every tap so an unsupported camera is distinguishable from a missed tap.
+            if (!_tapFocusSupported)
+            {
+                _focusStatus = $"   tap ({u:F2}, {v:F2}) focus unsupported";
+                return;
+            }
+
+            _webcam.autoFocusPoint = new Vector2(u, v);
+            _tapFocusResetTime = Time.unscaledTime + tapFocusHoldSeconds;
+            _focusStatus = $"   focus ({u:F2}, {v:F2})";
+            Debug.Log($"QRCodeSampleRunner: focus point ({u:F2}, {v:F2})");
+        }
+
+        private static bool TryGetTap(out Vector2 screenPosition)
+        {
+#if QRCODE_SAMPLE_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
+            Pointer pointer = Pointer.current;
+            if (pointer != null && pointer.press.wasPressedThisFrame)
+            {
+                screenPosition = pointer.position.ReadValue();
+                return true;
+            }
+#elif ENABLE_LEGACY_INPUT_MANAGER
+            if (Input.GetMouseButtonDown(0))
+            {
+                screenPosition = Input.mousePosition;
+                return true;
+            }
+#endif
+            screenPosition = default;
+            return false;
+        }
+
+        // Phone cameras deliver sensor-oriented frames; the preview is turned to match while the
+        // decoder keeps reading the raw frame, so result corners stay in the frame's own coordinates.
+        private void AlignWebcamPreview()
+        {
+            if (webcamPreview == null)
+                return;
+
+            int angle = _webcam.videoRotationAngle;
+            RectTransform rectTransform = webcamPreview.rectTransform;
+            rectTransform.localEulerAngles = new Vector3(0f, 0f, -angle);
+            webcamPreview.uvRect = _webcam.videoVerticallyMirrored ? new Rect(0f, 1f, 1f, -1f) : new Rect(0f, 0f, 1f, 1f);
+
+            // Letterbox the camera's aspect into the scene box; a quarter turn swaps the box's sides.
+            bool quarterTurn = angle % 180 != 0;
+            float boxWidth = quarterTurn ? _previewBounds.y : _previewBounds.x;
+            float boxHeight = quarterTurn ? _previewBounds.x : _previewBounds.y;
+            float aspect = (float)_webcam.width / _webcam.height;
+            float width = boxWidth;
+            float height = width / aspect;
+            if (height > boxHeight)
+            {
+                height = boxHeight;
+                width = height * aspect;
+            }
+            rectTransform.sizeDelta = new Vector2(width, height);
         }
 
         private Gray8Image RentTextureFrame(Texture2D texture)

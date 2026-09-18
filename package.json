@@ -1,8 +1,8 @@
 {
   "name": "com.s46129.qrcode",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "displayName": "ZXing-C++ QR Code",
-  "description": "High-performance Gray8 QR Code decoding for Unity on Windows and Android using ZXing-C++.",
+  "description": "High-performance Gray8 QR Code decoding for Unity on Windows, macOS, Android and iOS using ZXing-C++.",
   "unity": "2021.3",
   "license": "Apache-2.0",
   "keywords": [
@@ -10,6 +10,8 @@
     "barcode",
     "zxing",
     "android",
+    "ios",
+    "macos",
     "windows"
   ],
   "author": {

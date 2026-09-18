@@ -1,6 +1,6 @@
 # ZXing-C++ QR Code for Unity
 
-ZXing-C++ QR Code for Unity is a reusable Unity package that decodes QR Codes from Gray8/luminance buffers through the ZXing-C++ C API. It supports Windows x86_64 and Android arm64-v8a with one C# API and is maintained by [s46129](https://github.com/s46129).
+ZXing-C++ QR Code for Unity is a reusable Unity package that decodes QR Codes from Gray8/luminance buffers through the ZXing-C++ C API. It supports Windows x86_64, macOS (arm64/x86_64 universal), Android arm64-v8a and iOS arm64 with one C# API and is maintained by [s46129](https://github.com/s46129).
 
 ## Runtime flow
 

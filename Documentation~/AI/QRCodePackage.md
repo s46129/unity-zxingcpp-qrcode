@@ -34,7 +34,7 @@
 
 ## 原生耦合
 
-- C API/library name: `ZXing`。
+- C API/library name: `ZXing`；iOS 例外——plugin 是靜態庫、被連進 player 執行檔，`ZXingNativeMethods.LibraryName` 在 `UNITY_IOS && !UNITY_EDITOR` 下改成 `__Internal`。`DllImport` 需要編譯期常數，所以用 `#if` 而不是 runtime 判斷。
 - Gray8 enum: `ZXing_ImageFormat_Lum = 0x01000000`。
 - QR format ID: `0x2051`（ZXing-C++ 3.x 的 `ZXing_BarcodeFormat_QRCode`）。
 - C `bool` P/Invoke 使用 `UnmanagedType.I1`。
@@ -43,13 +43,15 @@
 - Android 明確靜態連結 `c++_static`/`c++abi`，避開新版 NDK 搭 Unity 內附舊 CMake 時漏掉 libc++ 的 link line。
 - Android binary 的 `PT_LOAD` segment 對齊 16 KB（`-Wl,-z,max-page-size=16384`／`-Wl,-z,common-page-size=16384`），否則 16 KB page-size 裝置載不起 plugin。NDK 只有在 `ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES` 開著時才自己加這兩個旗標，所以 `Native~/CMakeLists.txt` 直接寫死；`CopyZXingPlugin` 在 strip 之後跑 `Native~/cmake/CheckElfAlignment.cmake`（純 CMake 解析 program header，不依賴 readelf），對齊退回 4 KB 就讓 build 失敗。
 - `Native~/build-android.ps1` 的 `-D...=$var` 一定要用雙引號包起來：Windows PowerShell 5.1 把裸露的 `-D...=$var` 當參數名，`$var` 會原樣傳給 cmake。
-- 升級 upstream 時必須同步核對 `ZXingC.h`、P/Invoke ownership、format ID 與兩平台 binary exports。
-- `ZXingCppQRCodeDecoderTests` 是唯一真的載入 binary 的測試（inline 一張 version 1-L「TOPLEFT」模組矩陣，4 倍放大、4 module quiet zone、放進 256×256 畫面左上角），因此升 upstream 或改前處理時它是第一個會紅的地方；ABI 對不上會以 `QRCodeNativeException` 收場，不是靜默略過。套件只出 Windows x86_64 與 Android arm64-v8a binary，所以它在非 Windows-x64 Editor `Assert.Ignore`（用 `RuntimeInformation`，測試 asmdef 是 `noEngineReferences`，拿不到 `Application.platform`），在 Windows-x64 Editor 則硬跑，載入失敗即失敗。
+- macOS plugin 是單一 universal dylib（arm64+x86_64），一個檔同時餵 Apple silicon 與 Intel Editor／Player；CMake 在 `CMAKE_OSX_ARCHITECTURES` 不含兩者時直接 `FATAL_ERROR`，避免局部 slice 靜默蓋掉 bundled 檔。upstream 會把 dylib 命名成 `libZXing.<soname>.dylib`（3.1.0 的 soname 是 4）並附 symlink，copy 步驟改名為 `libZXing.dylib` 並用 `install_name_tool -id @rpath/libZXing.dylib` 對齊；`strip -x` 後必須重新 `codesign --sign -`，否則 Apple silicon 拒載。deployment target 11.0 是 arm64 macOS 的下限，由 `build-macos.sh` 傳入。
+- iOS plugin 是 `libZXing.a`（`BUILD_SHARED_LIBS=OFF` 只在 `CMAKE_SYSTEM_NAME=iOS` 時切換），只出 device arm64 slice；CMake 在 sysroot 是 simulator 時 `FATAL_ERROR`，因為同名檔會蓋掉 device 版。deployment target 12.0 是 Unity 2021.3／2022.3 的 iOS 下限。Simulator 需要另建 slice 放在 package 外。
+- 升級 upstream 時必須同步核對 `ZXingC.h`、P/Invoke ownership、format ID 與四個平台 binary 的 exports（macOS 兩個 arch 各自 `nm -arch`）。
+- `ZXingCppQRCodeDecoderTests` 是唯一真的載入 binary 的測試（inline 一張 version 1-L「TOPLEFT」模組矩陣，4 倍放大、4 module quiet zone、放進 256×256 畫面左上角），因此升 upstream 或改前處理時它是第一個會紅的地方；ABI 對不上會以 `QRCodeNativeException` 收場，不是靜默略過。Editor 載得起的 binary 只有 Windows x86_64 與 macOS universal，所以它在其他 Editor `Assert.Ignore`（用 `RuntimeInformation`，測試 asmdef 是 `noEngineReferences`，拿不到 `Application.platform`），在 Windows-x64 與 macOS（arm64／x64）Editor 則硬跑，載入失敗即失敗。
 
 ## 已知限制
 
 - `Post` 成功回傳、callback 卻永遠不被 pump（context 已拆掉、domain reload）偵測不到：沒有例外可接，`_busy` 仍會永久留在 `true`，租用的 buffer 也收不回來。要處理得加逾時 watchdog，見 issue #7。
-- 套件內含已驗證的 Windows x86_64 與 Android arm64-v8a binary；`Native~` 重建時首次 configure 需要 Git/network。
+- 套件內含 Windows x86_64、macOS universal、Android arm64-v8a、iOS arm64（device）binary；`Native~` 重建時首次 configure 需要 Git/network。iOS Simulator、Android 32-bit、Linux、WebGL 沒有 binary，`ZXingCppQRCodeDecoder` 在那些平台丟 `QRCodeNativeException`。
 - API 不直接借用 `NativeArray<byte>`，因為 background lifetime 無法由 scanner 保證；Sample 明確複製 R8 raw data。
 - Unity `Texture2D` 的 raw data 是 bottom-up：第一列是畫面最下列，與 `GetPixels32` 同序。Sample 因此在複製後就地跑 `Gray8RowOrder.FlipVertically`，不做這步的話角點會落在畫面下緣、`Orientation` 差 90 度、`IsMirrored` 變 true，上半部 ROI 也會選到畫面下半（`ZXingCppQRCodeDecoderTests` 的 bottom-up 兩條測試把這個症狀鎖住，issue #4 的留言有原始實測數據）。就地翻轉是為了不再開第二塊整張影像大小的 buffer，代價是一次額外的整張走訪加一條 row 暫存。相機 Y plane 多半已經是 top-down，`SubmitRawGray8` 不翻——`FlipVertically` 是無條件反轉，對已經 top-down 的來源呼叫會把方向弄反。
 - Sample 的 Texture 路徑複製 `GetRawTextureData<byte>()` 的前 `width * height` bytes——raw data 含所有 mip level，多複製的部分解碼用不到。buffer 來自 `ArrayPool<byte>.Shared`，記在一份 `HashSet<byte[]>` 帳上，`ScanCompleted` 只歸還帳上有的那條——`SubmitRawGray8` 的呼叫端 buffer 因此不會被誤還，`Remove` 也讓重複歸還不可能。**不能用單一欄位記**：`CompleteFrame` 先清 `_busy` 才觸發 `Detected`，所以事件處理器可以在 `ScanCompleted` 之前就再租一條，單欄位會被覆蓋而漏還前一條。`OnDestroy` 時在途的 buffer 直接丟掉不還，因為 decode 還在讀它。殘留配置只剩每次提交的 display class ＋ delegate（約 10^2 bytes），與整張影像不同量級。
