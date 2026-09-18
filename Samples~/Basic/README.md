@@ -14,7 +14,9 @@ Open `WebcamDecode.unity` and enter Play Mode. The runner starts the default `We
 
 Each accepted frame is converted from RGBA to Gray8 on the main thread (integer Rec. 601 luma) into an `ArrayPool<byte>` buffer, then flipped with `Gray8RowOrder.FlipVertically` because `WebCamTexture` rows start at the displayed bottom like every Unity texture. The conversion runs only after the scanner accepts the frame, so frames dropped by the scan interval cost nothing beyond the submit call.
 
-Camera permission on Android/iOS and `WebCamTexture.videoRotationAngle` / `videoVerticallyMirrored` handling are left to the app; this sample assumes a desktop camera that delivers upright frames.
+The runner asks for camera permission before it creates the `WebCamTexture` (`Application.RequestUserAuthorization` on iOS, macOS and WebGL, `Permission.RequestUserPermission` on Android) and waits for the answer, because a texture created while the dialog is still open never delivers frames. On iOS the first launch therefore shows the system prompt and then starts the camera; a denied prompt leaves the preview black until the permission is granted in Settings.
+
+Phone cameras deliver frames in sensor orientation. The preview turns its `RectTransform` by `-videoRotationAngle` and flips its `uvRect` when `videoVerticallyMirrored` is set, so it looks upright; the decoder still reads the raw frame, so `TopLeft`/`TopRight`/... and `Orientation` are measured in that unrotated frame (a portrait phone typically reports an orientation near ±90). Rotate the corners yourself if you need them in screen space.
 
 For a camera Y plane or another raw source, call:
 

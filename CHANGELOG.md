@@ -8,6 +8,7 @@
 - Added a supported-platform table and the per-target build environment to the README (#12).
 - The native decoder end-to-end EditMode tests now run on the macOS Editor instead of being ignored (#12).
 - The plugin importer helper now configures the macOS and iOS plugins and disables every other bundled plugin on those targets (#12).
+- Fixed the webcam sample on phones: it now requests camera permission before creating the `WebCamTexture` (the first iOS launch used to stay black) and turns the preview by `videoRotationAngle`/`videoVerticallyMirrored` so it renders upright (#12).
 
 ## 1.1.0 - 2026-09-08
 

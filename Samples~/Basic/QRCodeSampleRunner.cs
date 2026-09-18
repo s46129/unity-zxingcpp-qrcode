@@ -1,10 +1,14 @@
 using System;
 using System.Buffers;
+using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+#if UNITY_ANDROID && !UNITY_EDITOR
+using UnityEngine.Android;
+#endif
 
 namespace ZXingCpp.QRCode.Samples
 {
@@ -58,7 +62,7 @@ namespace ZXingCpp.QRCode.Samples
             _scanner.Start();
 
             if (useWebcam)
-                StartWebcam();
+                StartCoroutine(StartWebcamWhenAuthorized());
             else if (sourceTexture != null)
                 SubmitTexture(sourceTexture);
         }
@@ -67,7 +71,10 @@ namespace ZXingCpp.QRCode.Samples
         {
             // WebCamTexture reports 16x16 until the first real frame arrives.
             if (_webcam != null && _webcam.didUpdateThisFrame && _webcam.width > 16)
+            {
                 _scanner.TrySubmitFrame(_webcamProvider);
+                AlignWebcamPreview();
+            }
 
             if (statsLabel == null)
                 return;
@@ -105,6 +112,25 @@ namespace ZXingCpp.QRCode.Samples
             return _scanner.TrySubmitFrame(new Gray8Image(gray8, width, height, rowStride));
         }
 
+        private IEnumerator StartWebcamWhenAuthorized()
+        {
+            // A WebCamTexture created before the permission dialog is answered stays black for the rest of the run.
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (!Permission.HasUserAuthorizedPermission(Permission.Camera))
+                Permission.RequestUserPermission(Permission.Camera);
+            while (!Permission.HasUserAuthorizedPermission(Permission.Camera))
+                yield return new WaitForSecondsRealtime(0.5f);
+#else
+            yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
+            if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
+            {
+                Debug.LogWarning("QRCodeSampleRunner: camera permission was denied, so the webcam stays off.");
+                yield break;
+            }
+#endif
+            StartWebcam();
+        }
+
         private void StartWebcam()
         {
             _webcam = string.IsNullOrEmpty(webcamDeviceName)
@@ -114,6 +140,17 @@ namespace ZXingCpp.QRCode.Samples
             if (webcamPreview != null)
                 webcamPreview.texture = _webcam;
             _webcamProvider = RentWebcamFrame;
+        }
+
+        // Phone cameras deliver sensor-oriented frames; the preview is turned to match while the
+        // decoder keeps reading the raw frame, so result corners stay in the frame's own coordinates.
+        private void AlignWebcamPreview()
+        {
+            if (webcamPreview == null)
+                return;
+
+            webcamPreview.rectTransform.localEulerAngles = new Vector3(0f, 0f, -_webcam.videoRotationAngle);
+            webcamPreview.uvRect = _webcam.videoVerticallyMirrored ? new Rect(0f, 1f, 1f, -1f) : new Rect(0f, 0f, 1f, 1f);
         }
 
         private Gray8Image RentTextureFrame(Texture2D texture)
